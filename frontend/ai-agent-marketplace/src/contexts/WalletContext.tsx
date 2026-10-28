@@ -4,19 +4,52 @@ import { Horizon } from '@stellar/stellar-sdk';
 
 export type NetworkType = string;
 
+// Circle USDC issuers — keep these as constants so they're easy to audit
+const USDC_ISSUER_TESTNET = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+const USDC_ISSUER_MAINNET = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+
 const getHorizonUrl = (network: string | null) =>
   network === 'PUBLIC'
     ? 'https://horizon.stellar.org'
     : 'https://horizon-testnet.stellar.org';
 
-const fetchBalance = async (publicKey: string, network: string | null): Promise<string> => {
+interface Balances {
+  /** Native XLM balance as a decimal string, e.g. "9.9999900" */
+  xlmBalance: string;
+  /** USDC balance as a decimal string, or "0" when no trustline exists */
+  usdcBalance: string;
+}
+
+/**
+ * Fetch both the native XLM balance and the Circle USDC trustline balance
+ * for a given account.  Returns "0" for whichever asset is absent rather
+ * than throwing, so callers never need to guard against undefined.
+ */
+const fetchBalances = async (
+  publicKey: string,
+  network: string | null,
+): Promise<Balances> => {
   try {
     const server = new Horizon.Server(getHorizonUrl(network));
     const account = await server.loadAccount(publicKey);
+
     const native = account.balances.find((b) => b.asset_type === 'native');
-    return native?.balance ?? '0';
+    const xlmBalance = native?.balance ?? '0';
+
+    const usdcIssuer =
+      network === 'PUBLIC' ? USDC_ISSUER_MAINNET : USDC_ISSUER_TESTNET;
+
+    const usdc = account.balances.find(
+      (b) =>
+        b.asset_type === 'credit_alphanum4' &&
+        b.asset_code === 'USDC' &&
+        b.asset_issuer === usdcIssuer,
+    );
+    const usdcBalance = usdc?.balance ?? '0';
+
+    return { xlmBalance, usdcBalance };
   } catch {
-    return '0';
+    return { xlmBalance: '0', usdcBalance: '0' };
   }
 };
 
@@ -25,7 +58,10 @@ interface WalletState {
   network: string | null;
   isConnected: boolean;
   isConnecting: boolean;
-  balance: string;
+  /** Native XLM balance */
+  xlmBalance: string;
+  /** Circle USDC balance (zero when no trustline exists) */
+  usdcBalance: string;
   isLoading: boolean;
   availableNetworks: string[];
 }
@@ -48,17 +84,19 @@ export const useWallet = () => {
   return context;
 };
 
-export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<WalletState>({
-    publicKey: null,
-    network: 'TESTNET',
-    isConnected: false,
-    isConnecting: false,
-    balance: '0',
-    isLoading: false,
-    availableNetworks: ['TESTNET', 'PUBLIC'],
-  });
+const INITIAL_STATE: WalletState = {
+  publicKey: null,
+  network: 'TESTNET',
+  isConnected: false,
+  isConnecting: false,
+  xlmBalance: '0',
+  usdcBalance: '0',
+  isLoading: false,
+  availableNetworks: ['TESTNET', 'PUBLIC'],
+};
 
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = useState<WalletState>(INITIAL_STATE);
   const [isFreighterInstalled, setIsFreighterInstalled] = useState(false);
 
   const checkConnection = useCallback(async () => {
@@ -88,11 +126,12 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setState((prev) => ({ ...prev, isConnecting: true }));
     try {
       const publicKey = await freighter.getPublicKey();
-      const balance = await fetchBalance(publicKey, state.network);
+      const { xlmBalance, usdcBalance } = await fetchBalances(publicKey, state.network);
       setState((prev) => ({
         ...prev,
         publicKey,
-        balance,
+        xlmBalance,
+        usdcBalance,
         isConnected: true,
         isConnecting: false,
       }));
@@ -103,15 +142,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const disconnect = () => {
-    setState({
-      publicKey: null,
-      network: 'TESTNET',
-      isConnected: false,
-      isConnecting: false,
-      balance: '0',
-      isLoading: false,
-      availableNetworks: ['TESTNET', 'PUBLIC'],
-    });
+    setState(INITIAL_STATE);
   };
 
   const signTransaction = async (xdr: string, opts?: any): Promise<string> => {
@@ -119,7 +150,11 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return result.signedTxXdr;
   };
 
-  const signAuthEntry = async (xdr: string, address: string, networkPassphrase: string): Promise<string> => {
+  const signAuthEntry = async (
+    xdr: string,
+    address: string,
+    networkPassphrase: string,
+  ): Promise<string> => {
     const result = await freighter.signAuthEntry(xdr, {
       accountToSign: address,
       networkPassphrase,
@@ -134,8 +169,11 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const refreshBalance = async () => {
     if (!state.publicKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
-    const balance = await fetchBalance(state.publicKey, state.network);
-    setState((prev) => ({ ...prev, balance, isLoading: false }));
+    const { xlmBalance, usdcBalance } = await fetchBalances(
+      state.publicKey,
+      state.network,
+    );
+    setState((prev) => ({ ...prev, xlmBalance, usdcBalance, isLoading: false }));
   };
 
   return (

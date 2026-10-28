@@ -36,6 +36,7 @@ fn create_marketplace_contract<'a>(
         &200,           // platform_fee_bps_dispute (2%)
         &30,            // escrow_expiry_days
         &Vec::new(e),   // skill_verifiers
+        &false,         // require_skill_verification (off by default)
     );
 
     client
@@ -428,6 +429,7 @@ fn test_skill_verification() {
         &200,
         &30,
         &Vec::from_array(&e, [verifier.clone()]),
+        &false, // require_skill_verification
     );
 
     // Register agent
@@ -1134,4 +1136,212 @@ fn test_get_escrow_by_job() {
     assert_eq!(esc.job_id, job_id);
     assert_eq!(esc.amount, 10_000_000);
     assert_eq!(esc.status, EscrowStatus::Funded);
+}
+
+// ==================== Skill Verification Toggle Tests ====================
+
+/// Helper: initializes a marketplace contract with require_skill_verification
+/// set to the given value, registers a verifier, and returns both.
+fn create_marketplace_with_verification_flag<'a>(
+    e: &Env,
+    admin: &Address,
+    usdc: &Address,
+    verifier: &Address,
+    require_skill_verification: bool,
+) -> AiAgentMarketplaceClient<'a> {
+    let contract_id = e.register_contract(None, AiAgentMarketplace);
+    let client = AiAgentMarketplaceClient::new(e, &contract_id);
+
+    client.initialize(
+        admin,
+        usdc,
+        &100,
+        &10_000_000,
+        &30,
+        &7,
+        &0,
+        admin,
+        admin,
+        &0,
+        &200,
+        &30,
+        &Vec::from_array(e, [verifier.clone()]),
+        &require_skill_verification,
+    );
+
+    client
+}
+
+/// When `require_skill_verification = false` (the default), an unverified agent
+/// should be able to place a bid on any job whose skills they possess.
+#[test]
+fn test_bid_allowed_when_verification_not_required() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let admin = Address::generate(&e);
+    let verifier = Address::generate(&e);
+    let client_addr = Address::generate(&e);
+    let agent_owner = Address::generate(&e);
+    let usdc = create_token_contract(&e);
+
+    // Verification NOT required
+    let marketplace = create_marketplace_with_verification_flag(
+        &e, &admin, &usdc.address(), &verifier, false,
+    );
+
+    // Register agent with the skill but do NOT call verify_skill
+    marketplace.register_agent(
+        &agent_owner,
+        &String::from_str(&e, "Agent"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &50_000_000,
+        &String::from_str(&e, "ipfs://QmTest"),
+    );
+
+    // Post job requiring the same skill
+    let job_id = marketplace.post_job(
+        &client_addr,
+        &String::from_str(&e, "Job"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &100_000_000,
+        &14,
+    );
+
+    // Bid should succeed even though skill is unverified
+    let bid_id = marketplace.place_bid(
+        &agent_owner,
+        &job_id,
+        &80_000_000,
+        &7,
+        &String::from_str(&e, "Proposal"),
+    );
+
+    let bid = marketplace.get_bid(&bid_id);
+    assert_eq!(bid.agent, agent_owner);
+    assert_eq!(bid.status, BidStatus::Pending);
+}
+
+/// When `require_skill_verification = true`, an unverified agent must be
+/// rejected with `SkillVerificationRequired`.
+#[test]
+fn test_bid_blocked_when_verification_required_and_skill_unverified() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let admin = Address::generate(&e);
+    let verifier = Address::generate(&e);
+    let client_addr = Address::generate(&e);
+    let agent_owner = Address::generate(&e);
+    let usdc = create_token_contract(&e);
+
+    // Verification IS required
+    let marketplace = create_marketplace_with_verification_flag(
+        &e, &admin, &usdc.address(), &verifier, true,
+    );
+
+    // Register agent with the skill but do NOT verify
+    marketplace.register_agent(
+        &agent_owner,
+        &String::from_str(&e, "Agent"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &50_000_000,
+        &String::from_str(&e, "ipfs://QmTest"),
+    );
+
+    let job_id = marketplace.post_job(
+        &client_addr,
+        &String::from_str(&e, "Job"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &100_000_000,
+        &14,
+    );
+
+    // Bid must fail with SkillVerificationRequired
+    let result = marketplace.try_place_bid(
+        &agent_owner,
+        &job_id,
+        &80_000_000,
+        &7,
+        &String::from_str(&e, "Proposal"),
+    );
+    assert_eq!(result, Err(Ok(Error::SkillVerificationRequired)));
+}
+
+/// After an admin toggles `require_skill_verification` from `true` to `false`
+/// via `update_config`, previously-blocked agents can now bid.
+#[test]
+fn test_admin_can_toggle_require_skill_verification() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let admin = Address::generate(&e);
+    let verifier = Address::generate(&e);
+    let client_addr = Address::generate(&e);
+    let agent_owner = Address::generate(&e);
+    let usdc = create_token_contract(&e);
+
+    // Start with verification required
+    let marketplace = create_marketplace_with_verification_flag(
+        &e, &admin, &usdc.address(), &verifier, true,
+    );
+
+    // Register unverified agent
+    marketplace.register_agent(
+        &agent_owner,
+        &String::from_str(&e, "Agent"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &50_000_000,
+        &String::from_str(&e, "ipfs://QmTest"),
+    );
+
+    let job_id = marketplace.post_job(
+        &client_addr,
+        &String::from_str(&e, "Job"),
+        &String::from_str(&e, "Desc"),
+        &Vec::from_array(&e, [String::from_str(&e, "python")]),
+        &100_000_000,
+        &14,
+    );
+
+    // Confirm bidding is blocked
+    let blocked = marketplace.try_place_bid(
+        &agent_owner, &job_id, &80_000_000, &7,
+        &String::from_str(&e, "Proposal"),
+    );
+    assert_eq!(blocked, Err(Ok(Error::SkillVerificationRequired)));
+
+    // Admin disables the requirement
+    marketplace.update_config(
+        &admin,
+        &Option::None, // platform_fee_bps
+        &Option::None, // min_job_budget
+        &Option::None, // max_job_deadline_days
+        &Option::None, // dispute_window_days
+        &Option::None, // min_agent_reputation
+        &Option::None, // platform_fee_recipient
+        &Option::None, // dispute_resolver
+        &Option::None, // min_agent_reputation_to_bid
+        &Option::None, // platform_fee_bps_dispute
+        &Option::None, // escrow_expiry_days
+        &Option::None, // skill_verifiers
+        &Option::Some(false), // require_skill_verification -> disabled
+    );
+
+    let config = marketplace.get_config();
+    assert!(!config.require_skill_verification);
+
+    // Now the same bid must succeed
+    let bid_id = marketplace.place_bid(
+        &agent_owner, &job_id, &80_000_000, &7,
+        &String::from_str(&e, "Proposal"),
+    );
+    let bid = marketplace.get_bid(&bid_id);
+    assert_eq!(bid.agent, agent_owner);
+    assert_eq!(bid.status, BidStatus::Pending);
 }

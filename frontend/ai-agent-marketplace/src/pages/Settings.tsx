@@ -19,7 +19,7 @@ import { clsx } from 'clsx';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, disconnect, balance } = useWallet();
+  const { publicKey, isConnected, disconnect, usdcBalance, xlmBalance } = useWallet();
   const { getContractClient } = useStellar();
   const [activeTab, setActiveTab] = useState<'profile' | 'wallet' | 'notifications' | 'security' | 'appearance'>('profile');
   const { theme, setTheme, isDark } = useTheme();
@@ -139,15 +139,19 @@ export const Settings: React.FC = () => {
                   <Wallet className="h-5 w-5" />
                   Wallet Balance
                 </CardTitle>
-                <CardDescription>Your USDC balance on Stellar network</CardDescription>
+                <CardDescription>Your balances on the Stellar network</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="p-6 bg-gradient-to-r from-primary/10 to-stellar/10 rounded-xl">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">USDC Balance</p>
-                      <p className="text-4xl font-bold text-foreground">${parseFloat(balance || '0').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                      <p className="text-sm text-muted-foreground mt-1">≈ ${(parseFloat(balance || '0') * 1.0).toLocaleString()} USD</p>
+                      <p className="text-4xl font-bold text-foreground">
+                        ${parseFloat(usdcBalance || '0').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        XLM: {parseFloat(xlmBalance || '0').toLocaleString(undefined, { minimumFractionDigits: 7, maximumFractionDigits: 7 })} XLM
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm">
