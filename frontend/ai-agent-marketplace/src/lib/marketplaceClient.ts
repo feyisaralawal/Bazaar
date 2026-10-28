@@ -42,11 +42,26 @@ export type InvokeFn = (
   ...args: xdr.ScVal[]
 ) => Promise<xdr.ScVal | null>;
 
+/** Signs a transaction XDR (e.g. via Freighter) and returns the signed XDR. */
+export type SignFn = (xdr: string) => Promise<string>;
+
+/** Builds, signs and submits a real transaction invoking `method`. */
+export type SendFn = (
+  method: string,
+  args: xdr.ScVal[],
+  publicKey: string,
+  signTransaction: SignFn,
+) => Promise<xdr.ScVal | null>;
+
 // ── argument builders ────────────────────────────────────────────────────────
 const u64 = (n: number | bigint): xdr.ScVal =>
   nativeToScVal(BigInt(n), { type: 'u64' });
+const i128 = (n: number | bigint | string): xdr.ScVal =>
+  nativeToScVal(BigInt(n), { type: 'i128' });
 const addr = (a: string): xdr.ScVal => nativeToScVal(a, { type: 'address' });
 const str = (s: string): xdr.ScVal => nativeToScVal(s, { type: 'string' });
+const strVec = (arr: string[]): xdr.ScVal => nativeToScVal(arr, { type: 'vec<string>' });
+const bytes32 = (b: Uint8Array): xdr.ScVal => nativeToScVal(b, { type: 'bytes' });
 
 // ── low-level decoding helpers ───────────────────────────────────────────────
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -247,13 +262,114 @@ function mapEscrow(raw: Native): Escrow {
 
 // ── client ─────────────────────────────────────────────────────────────────────
 export class MarketplaceClient {
-  constructor(private invokeContract: InvokeFn) {}
+  constructor(
+    private invokeContract: InvokeFn,
+    private sendTx?: SendFn,
+  ) {}
 
   /** Invoke a read method and return its `scValToNative` result. */
   private async call(method: string, ...args: xdr.ScVal[]): Promise<Native> {
     const raw = await this.invokeContract(method, ...args);
     if (raw === null || raw === undefined) return null;
     return scValToNative(raw);
+  }
+
+  /** Sign and submit a mutating call, returning its `scValToNative` result. */
+  private async send(
+    method: string,
+    publicKey: string,
+    signTransaction: SignFn,
+    ...args: xdr.ScVal[]
+  ): Promise<Native> {
+    if (!this.sendTx) throw new Error('Write transactions are not available.');
+    const raw = await this.sendTx(method, args, publicKey, signTransaction);
+    if (raw === null || raw === undefined) return null;
+    return scValToNative(raw);
+  }
+
+  // ── mutations (real signed Soroban transactions) ──────────────────────────
+  async registerAgent(
+    publicKey: string,
+    signTransaction: SignFn,
+    params: { name: string; description: string; skills: string[]; pricePerTask: number | bigint; metadataUri: string },
+  ): Promise<number> {
+    const raw = await this.send(
+      'register_agent', publicKey, signTransaction,
+      addr(publicKey),
+      str(params.name),
+      str(params.description),
+      strVec(params.skills),
+      i128(params.pricePerTask),
+      str(params.metadataUri),
+    );
+    return toNum(unwrapResult(raw));
+  }
+
+  async postJob(
+    publicKey: string,
+    signTransaction: SignFn,
+    params: { title: string; description: string; requiredSkills: string[]; budget: number | bigint; deadlineDays: number },
+  ): Promise<number> {
+    const raw = await this.send(
+      'post_job', publicKey, signTransaction,
+      addr(publicKey),
+      str(params.title),
+      str(params.description),
+      strVec(params.requiredSkills),
+      i128(params.budget),
+      u64(params.deadlineDays),
+    );
+    return toNum(unwrapResult(raw));
+  }
+
+  async placeBid(
+    publicKey: string,
+    signTransaction: SignFn,
+    params: { jobId: number; amount: number | bigint; proposedTimelineDays: number; proposal: string },
+  ): Promise<number> {
+    const raw = await this.send(
+      'place_bid', publicKey, signTransaction,
+      addr(publicKey),
+      u64(params.jobId),
+      i128(params.amount),
+      u64(params.proposedTimelineDays),
+      str(params.proposal),
+    );
+    return toNum(unwrapResult(raw));
+  }
+
+  async acceptBid(publicKey: string, signTransaction: SignFn, jobId: number, bidId: number): Promise<void> {
+    const raw = await this.send(
+      'accept_bid', publicKey, signTransaction, addr(publicKey), u64(jobId), u64(bidId),
+    );
+    unwrapResult(raw);
+  }
+
+  async submitDeliverable(
+    publicKey: string,
+    signTransaction: SignFn,
+    jobId: number,
+    deliverableHash: Uint8Array,
+  ): Promise<void> {
+    const raw = await this.send(
+      'submit_deliverable', publicKey, signTransaction,
+      addr(publicKey), u64(jobId), bytes32(deliverableHash),
+    );
+    unwrapResult(raw);
+  }
+
+  async approveDeliverable(publicKey: string, signTransaction: SignFn, jobId: number): Promise<void> {
+    const raw = await this.send(
+      'approve_deliverable', publicKey, signTransaction, addr(publicKey), u64(jobId),
+    );
+    unwrapResult(raw);
+  }
+
+  async reclaimExpiredEscrow(publicKey: string, signTransaction: SignFn, jobId: number): Promise<void> {
+    const raw = await this.send(
+      'reclaim_expired_escrow', publicKey, signTransaction, addr(publicKey), u64(jobId),
+    );
+    unwrapResult(raw);
   }
 
   // ── single-record getters (Result<T, Error>) ──────────────────────────────
