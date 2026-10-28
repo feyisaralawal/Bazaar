@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useInfiniteQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Textarea } from '@/components/ui/Textarea';
 import { Star, DollarSign, Clock, CheckCircle, Award, Shield, ExternalLink, MessageSquare, ArrowLeft, Wallet, Send, AlertCircle, Loader2 } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useStellar } from '@/contexts/StellarContext';
@@ -23,12 +21,7 @@ export const AgentProfile: React.FC = () => {
   const navigate = useNavigate();
   const { publicKey, isConnected } = useWallet();
   const { getContractClient } = useStellar();
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'reviews'>('overview');
-  const [showBidModal, setShowBidModal] = useState(false);
-  const [bidAmount, setBidAmount] = useState('');
-  const [bidTimeline, setBidTimeline] = useState('');
-  const [bidProposal, setBidProposal] = useState('');
 
   const agentIdNum = parseInt(agentId || '0');
 
@@ -159,25 +152,6 @@ export const AgentProfile: React.FC = () => {
   }
 
   const isOwner = publicKey === agent.owner;
-  const canBid = isConnected && !isOwner && agent.isActive;
-
-  const handleBid = async () => {
-    if (!publicKey) return;
-    try {
-      const client = getContractClient();
-      // In real implementation: await client.placeBid({...});
-      // For now, just simulate
-      setShowBidModal(false);
-      setBidAmount('');
-      setBidTimeline('');
-      setBidProposal('');
-      queryClient.invalidateQueries({ queryKey: ['agent-jobs', agentIdNum] });
-      alert('Bid placed successfully! (Demo mode)');
-    } catch (err) {
-      console.error('Bid failed:', err);
-      alert('Failed to place bid. Please try again.');
-    }
-  };
 
   const rating = agent.reputation;
   const fullStars = Math.floor(rating);
@@ -285,7 +259,9 @@ export const AgentProfile: React.FC = () => {
               </Card>
             )}
 
-            {/* Hire Button for non-owners */}
+            {/* Hire CTA for non-owners. On-chain, agents bid on client-posted
+                jobs (there's no direct "hire" call), so this links to job
+                creation rather than submitting a bid on the viewer's behalf. */}
             {!isOwner && isConnected && agent.isActive && (
               <Card className="border-green-500/20 bg-green-500/5">
                 <CardContent className="p-4">
@@ -294,10 +270,12 @@ export const AgentProfile: React.FC = () => {
                       <p className="font-medium text-green-500">Available for Hire</p>
                       <p className="text-sm text-muted-foreground">Starting at {formatPrice(agent.pricePerTask)} per task</p>
                     </div>
-                    <Button onClick={() => setShowBidModal(true)} className="bg-green-500 hover:bg-green-600">
-                      <Send className="h-4 w-4 mr-2" />
-                      Hire This Agent
-                    </Button>
+                    <Link to="/create-job">
+                      <Button className="bg-green-500 hover:bg-green-600">
+                        <Send className="h-4 w-4 mr-2" />
+                        Post a Job for This Agent
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
@@ -582,49 +560,6 @@ export const AgentProfile: React.FC = () => {
         </div>
       </main>
 
-      {/* Bid Modal */}
-      {showBidModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <CardTitle>Place Bid</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                label="Bid Amount (USDC)"
-                type="number"
-                step="0.01"
-                value={bidAmount}
-                onChange={e => setBidAmount(e.target.value)}
-                placeholder="e.g., 100.00"
-              />
-              <Input
-                label="Timeline (days)"
-                type="number"
-                min="1"
-                value={bidTimeline}
-                onChange={e => setBidTimeline(e.target.value)}
-                placeholder="e.g., 7"
-              />
-              <Textarea
-                label="Proposal"
-                value={bidProposal}
-                onChange={e => setBidProposal(e.target.value)}
-                placeholder="Describe your approach, relevant experience, and why you're the best fit..."
-                rows={4}
-              />
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" onClick={() => setShowBidModal(false)} className="flex-1">
-                  Cancel
-                </Button>
-                <Button onClick={handleBid} className="flex-1" disabled={!bidAmount || !bidTimeline || !bidProposal}>
-                  Submit Bid
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };

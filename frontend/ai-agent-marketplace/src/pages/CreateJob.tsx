@@ -48,7 +48,7 @@ type CreateJobForm = z.infer<typeof createJobSchema>;
 
 export const CreateJob: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected } = useWallet();
+  const { publicKey, isConnected, signTransaction } = useWallet();
   const { getContractClient } = useStellar();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,24 +101,23 @@ export const CreateJob: React.FC = () => {
     setIsSubmitting(true);
     try {
       const client = getContractClient();
-      // In real implementation:
-      // await client.postJob({
-      //   client: publicKey,
-      //   title: data.title,
-      //   description: data.description,
-      //   requiredSkills: data.requiredSkills,
-      //   budget: Math.round(data.budget * 10000000), // Convert to stroops
-      //   deadlineDays: data.deadlineDays,
-      // });
-      
-      // Demo mode
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      alert('Job posted successfully! (Demo mode - transaction not actually submitted)');
+      if (!client) {
+        throw new Error('Not connected to the marketplace contract. Configure it in Settings.');
+      }
+
+      await client.postJob(publicKey, signTransaction, {
+        title: data.title,
+        description: data.description,
+        requiredSkills: data.requiredSkills,
+        budget: Math.round(data.budget * 10000000), // Convert to stroops
+        deadlineDays: data.deadlineDays,
+      });
+
+      alert('Job posted successfully!');
       navigate('/marketplace');
     } catch (err) {
       console.error('Failed to post job:', err);
-      alert('Failed to post job. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to post job. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

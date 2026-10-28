@@ -30,7 +30,7 @@ const ESCROW_EXPIRY_DAYS = 30;
 export const JobDetail: React.FC = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const { publicKey, isConnected } = useWallet();
+  const { publicKey, isConnected, signTransaction } = useWallet();
   const { getContractClient } = useStellar();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'details' | 'bids' | 'activity'>('details');
@@ -38,6 +38,9 @@ export const JobDetail: React.FC = () => {
   const [bidAmount, setBidAmount] = useState('');
   const [bidTimeline, setBidTimeline] = useState('');
   const [bidProposal, setBidProposal] = useState('');
+  const [showDeliverableModal, setShowDeliverableModal] = useState(false);
+  const [deliverableNote, setDeliverableNote] = useState('');
+  const [isActing, setIsActing] = useState(false);
 
   const jobIdNum = parseInt(jobId || '0');
 
@@ -88,63 +91,127 @@ export const JobDetail: React.FC = () => {
   const isAssignedAgent = publicKey === job?.assignedAgent;
   const canBid = isConnected && !isClient && job?.status === 'Open' && !isAssignedAgent;
 
-  // ── action handlers (mutations kept demo-only — no sign/send yet) ──────────
+  // ── action handlers (sign + submit real Soroban transactions) ─────────────
   const handleBid = async () => {
     if (!publicKey) return;
+    const client = getContractClient();
+    if (!client) {
+      alert('Not connected to the marketplace contract. Configure it in Settings.');
+      return;
+    }
+    setIsActing(true);
     try {
+      await client.placeBid(publicKey, signTransaction, {
+        jobId: jobIdNum,
+        amount: Math.round(parseFloat(bidAmount) * 10000000),
+        proposedTimelineDays: parseInt(bidTimeline, 10),
+        proposal: bidProposal,
+      });
       setShowBidModal(false);
       setBidAmount('');
       setBidTimeline('');
       setBidProposal('');
-      await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
-      alert('Bid placed successfully! (Demo mode)');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] }),
+        queryClient.invalidateQueries({ queryKey: ['job-bids', jobIdNum] }),
+      ]);
+      alert('Bid placed successfully!');
     } catch (err) {
       console.error('Bid failed:', err);
-      alert('Failed to place bid. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to place bid. Please try again.');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleAcceptBid = async (bidId: number) => {
     if (!publicKey || !isClient) return;
+    const client = getContractClient();
+    if (!client) {
+      alert('Not connected to the marketplace contract. Configure it in Settings.');
+      return;
+    }
+    setIsActing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
-      alert(`Bid ${bidId} accepted! Escrow funded. (Demo mode)`);
+      await client.acceptBid(publicKey, signTransaction, jobIdNum, bidId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] }),
+        queryClient.invalidateQueries({ queryKey: ['job-bids', jobIdNum] }),
+      ]);
+      alert(`Bid ${bidId} accepted! Escrow funded.`);
     } catch (err) {
       console.error('Accept bid failed:', err);
-      alert('Failed to accept bid. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to accept bid. Please try again.');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleSubmitDeliverable = async () => {
     if (!publicKey || !isAssignedAgent) return;
+    const client = getContractClient();
+    if (!client) {
+      alert('Not connected to the marketplace contract. Configure it in Settings.');
+      return;
+    }
+    setIsActing(true);
     try {
+      // The contract stores a 32-byte proof hash on-chain; the actual
+      // deliverable content/link lives off-chain (e.g. IPFS) and is hashed here.
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(deliverableNote));
+      await client.submitDeliverable(publicKey, signTransaction, jobIdNum, new Uint8Array(digest));
+      setShowDeliverableModal(false);
+      setDeliverableNote('');
       await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
-      alert('Deliverable submitted! (Demo mode)');
+      alert('Deliverable submitted!');
     } catch (err) {
       console.error('Submit failed:', err);
-      alert('Failed to submit deliverable.');
+      alert(err instanceof Error ? err.message : 'Failed to submit deliverable.');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleApprove = async () => {
     if (!publicKey || !isClient) return;
+    const client = getContractClient();
+    if (!client) {
+      alert('Not connected to the marketplace contract. Configure it in Settings.');
+      return;
+    }
+    setIsActing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
-      alert('Deliverable approved! Payment released. (Demo mode)');
+      await client.approveDeliverable(publicKey, signTransaction, jobIdNum);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] }),
+        queryClient.invalidateQueries({ queryKey: ['job-bids', jobIdNum] }),
+      ]);
+      alert('Deliverable approved! Payment released.');
     } catch (err) {
       console.error('Approve failed:', err);
-      alert('Failed to approve deliverable.');
+      alert(err instanceof Error ? err.message : 'Failed to approve deliverable.');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleReclaimFunds = async () => {
     if (!publicKey || !isClient) return;
+    const client = getContractClient();
+    if (!client) {
+      alert('Not connected to the marketplace contract. Configure it in Settings.');
+      return;
+    }
+    setIsActing(true);
     try {
+      await client.reclaimExpiredEscrow(publicKey, signTransaction, jobIdNum);
       await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
-      alert('Funds reclaimed successfully! (Demo mode)');
+      alert('Funds reclaimed successfully!');
     } catch (err) {
       console.error('Reclaim failed:', err);
-      alert('Failed to reclaim funds. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to reclaim funds. Please try again.');
+    } finally {
+      setIsActing(false);
     }
   };
 
@@ -323,6 +390,7 @@ export const JobDetail: React.FC = () => {
                     key={bid.id}
                     variant="outline"
                     onClick={() => handleAcceptBid(bid.id)}
+                    disabled={isActing}
                     className="flex-1 sm:flex-none"
                   >
                     Accept {bid.agent.slice(0, 6)}… ({formatPrice(bid.amount)})
@@ -332,7 +400,7 @@ export const JobDetail: React.FC = () => {
           )}
 
           {job.status === 'InProgress' && isAssignedAgent && !job.deliverableHash && (
-            <Button onClick={handleSubmitDeliverable} className="flex-1 sm:flex-none bg-primary">
+            <Button onClick={() => setShowDeliverableModal(true)} disabled={isActing} className="flex-1 sm:flex-none bg-primary">
               <FileText className="h-4 w-4 mr-2" />
               Submit Deliverable
             </Button>
@@ -341,6 +409,7 @@ export const JobDetail: React.FC = () => {
           {job.status === 'Completed' && job.deliverableHash && isClient && !job.completedAt && (
             <Button
               onClick={handleApprove}
+              disabled={isActing}
               className="flex-1 sm:flex-none bg-green-500 hover:bg-green-600"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
@@ -357,6 +426,7 @@ export const JobDetail: React.FC = () => {
           {canReclaimFunds && (
             <Button
               onClick={handleReclaimFunds}
+              disabled={isActing}
               variant="outline"
               className="flex-1 sm:flex-none border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
               title="Reclaim your USDC after the escrow expiry window"
@@ -553,6 +623,7 @@ export const JobDetail: React.FC = () => {
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={isActing}
                           className="w-full mt-1 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                           onClick={handleReclaimFunds}
                           aria-label="Reclaim escrowed funds from expired escrow"
@@ -635,7 +706,7 @@ export const JobDetail: React.FC = () => {
                             </div>
                           </div>
                           {isClient && bid.status === 'Pending' && (
-                            <Button size="sm" onClick={() => handleAcceptBid(bid.id)}>
+                            <Button size="sm" onClick={() => handleAcceptBid(bid.id)} disabled={isActing}>
                               Accept Bid
                             </Button>
                           )}
@@ -798,9 +869,47 @@ export const JobDetail: React.FC = () => {
                 <Button
                   onClick={handleBid}
                   className="flex-1"
-                  disabled={!bidAmount || !bidTimeline || !bidProposal}
+                  disabled={!bidAmount || !bidTimeline || !bidProposal || isActing}
+                  isLoading={isActing}
                 >
                   Submit Bid
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Submit Deliverable Modal ── */}
+      {showDeliverableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <CardTitle>Submit Deliverable for "{job.title}"</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                label="Deliverable Summary / Link"
+                value={deliverableNote}
+                onChange={(e) => setDeliverableNote(e.target.value)}
+                placeholder="Describe the completed work or link to it (e.g. an IPFS or GitHub URL). This is hashed and stored on-chain as proof of delivery."
+                rows={4}
+              />
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDeliverableModal(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmitDeliverable}
+                  className="flex-1"
+                  disabled={!deliverableNote || isActing}
+                  isLoading={isActing}
+                >
+                  Submit
                 </Button>
               </div>
             </CardContent>

@@ -48,7 +48,7 @@ type RegisterAgentForm = z.infer<typeof registerAgentSchema>;
 
 export const RegisterAgent: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected } = useWallet();
+  const { publicKey, isConnected, signTransaction } = useWallet();
   const { getContractClient } = useStellar();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -103,24 +103,23 @@ export const RegisterAgent: React.FC = () => {
     setIsSubmitting(true);
     try {
       const client = getContractClient();
-      // In real implementation:
-      // await client.registerAgent({
-      //   owner: publicKey,
-      //   name: data.name,
-      //   description: data.description,
-      //   skills: data.skills,
-      //   pricePerTask: Math.round(data.pricePerTask * 10000000),
-      //   metadataUri: data.metadataUri || `ipfs://QmAgent${Date.now()}`,
-      // });
-      
-      // Demo mode
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      alert('Agent registered successfully! (Demo mode - transaction not actually submitted)');
+      if (!client) {
+        throw new Error('Not connected to the marketplace contract. Configure it in Settings.');
+      }
+
+      await client.registerAgent(publicKey, signTransaction, {
+        name: data.name,
+        description: data.description,
+        skills: data.skills,
+        pricePerTask: Math.round(data.pricePerTask * 10000000),
+        metadataUri: data.metadataUri || `ipfs://QmAgent${Date.now()}`,
+      });
+
+      alert('Agent registered successfully!');
       navigate('/dashboard');
     } catch (err) {
       console.error('Failed to register agent:', err);
-      alert('Failed to register agent. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to register agent. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
