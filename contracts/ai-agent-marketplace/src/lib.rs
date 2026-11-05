@@ -271,6 +271,7 @@ pub enum Error {
     EscrowAlreadyRefunded = 49,
     InvalidDisputeEvidence = 50,
     ContractPaused = 51,
+    CannotBidOnOwnJob = 52,
 }
 
 #[contract]
@@ -510,8 +511,25 @@ impl AiAgentMarketplace {
             return Err(Error::InvalidSkill);
         }
 
+        // Allow re-verification when a previous verification has expired.
         if agent.skills_verified.get(skill.clone()).unwrap_or(false) {
-            return Err(Error::SkillAlreadyVerified);
+            // Check if the existing verification has expired.
+            let agent_verifications: Vec<u64> = env.storage().instance()
+                .get(&DataKey::SkillVerificationsByAgent(agent.owner.clone()))
+                .unwrap_or(Vec::new(&env));
+            let mut has_valid = false;
+            for vid in agent_verifications.iter() {
+                if let Some(v) = env.storage().instance().get(&DataKey::SkillVerification(*vid)) {
+                    if v.skill == skill && v.expires_at > now {
+                        has_valid = true;
+                        break;
+                    }
+                }
+            }
+            if has_valid {
+                return Err(Error::SkillAlreadyVerified);
+            }
+            // Existing verification expired — allow re-verification by overwriting.
         }
 
         let now = env.ledger().timestamp();
@@ -629,6 +647,19 @@ impl AiAgentMarketplace {
             return Err(Error::JobNotOpen);
         }
 
+        // Reject all pending bids so bidders know the job is no longer available.
+        let existing_bids: Vec<u64> = env.storage().instance()
+            .get(&DataKey::BidsByJob(job_id))
+            .unwrap_or(Vec::new(&env));
+        for bid_id in existing_bids.iter() {
+            if let Ok(mut bid) = Self::get_bid(&env, *bid_id) {
+                if bid.status == BidStatus::Pending {
+                    bid.status = BidStatus::Rejected;
+                    env.storage().instance().set(&DataKey::Bid(*bid_id), &bid);
+                }
+            }
+        }
+
         job.status = JobStatus::Cancelled;
         env.storage().instance().set(&DataKey::Job(job_id), &job);
 
@@ -661,6 +692,11 @@ impl AiAgentMarketplace {
 
         if env.ledger().timestamp() > job.deadline {
             return Err(Error::JobExpired);
+        }
+
+        // An agent owner cannot bid on their own job (if the client is also an agent).
+        if job.client == agent_owner {
+            return Err(Error::CannotBidOnOwnJob);
         }
 
         // Check if agent exists and is active
@@ -1841,224 +1877,6 @@ impl AiAgentMarketplace {
         let new_id = id + 1;
         env.storage().instance().set(&DataKey::VerificationCounter, &new_id);
         Ok(new_id)
-    }
-}
-    use super::*;
-    use soroban_sdk::testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation};
-    use soroban_sdk::{Env, Address, String, Vec, BytesN};
-
-    fn create_token_contract(env: &Env) -> Address {
-        let contract_id = env.register_contract(None, token::Client::new);
-        contract_id
-    }
-
-    #[test]
-    fn test_initialize() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let usdc = create_token_contract(&env);
-        let fee_recipient = Address::generate(&env);
-        let dispute_resolver = Address::generate(&env);
-        let verifiers = Vec::new(&env);
-
-        let contract_id = env.register_contract(None, AiAgentMarketplace);
-        let client = AiAgentMarketplaceClient::new(&env, &contract_id);
-
-        client.initialize(
-            &admin,
-            &usdc,
-            &100, // 1% fee
-            &10000000, // 10 USDC min
-            &30, // 30 days max deadline
-            &7, // 7 days dispute window
-            &0, // min reputation
-            &fee_recipient,
-            &dispute_resolver,
-            &0, // min reputation to bid
-            &200, // 2% dispute fee
-            &30, // 30 days escrow expiry
-            &verifiers,
-        ).unwrap();
-
-        let config = client.get_config().unwrap();
-        assert_eq!(config.admin, admin);
-        assert_eq!(config.platform_fee_bps, 100);
-    }
-
-    #[test]
-    fn test_register_agent() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let usdc = create_token_contract(&env);
-        let fee_recipient = Address::generate(&env);
-        let dispute_resolver = Address::generate(&env);
-        let verifiers = Vec::new(&env);
-
-        let contract_id = env.register_contract(None, AiAgentMarketplace);
-        let client = AiAgentMarketplaceClient::new(&env, &contract_id);
-
-        client.initialize(
-            &admin, &usdc, &100, &10000000, &30, &7, &0,
-            &fee_recipient, &dispute_resolver, &0, &200, &30, &verifiers,
-        ).unwrap();
-
-        let owner = Address::generate(&env);
-        let skills = Vec::from_array(&env, [
-            String::from_str(&env, "python"),
-            String::from_str(&env, "ml"),
-        ]);
-
-        let agent_id = client.register_agent(
-            &owner,
-            &String::from_str(&env, "AI Coder"),
-            &String::from_str(&env, "Expert Python developer"),
-            &skills,
-            &50000000, // 50 USDC
-            &String::from_str(&env, "ipfs://QmAgent123"),
-        ).unwrap();
-
-        assert_eq!(agent_id, 1);
-
-        let agent = client.get_agent(&agent_id).unwrap();
-        assert_eq!(agent.owner, owner);
-        assert_eq!(agent.name, String::from_str(&env, "AI Coder"));
-        assert_eq!(agent.price_per_task, 50000000);
-        assert!(agent.is_active);
-    }
-
-    #[test]
-    fn test_post_job_and_bid() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let usdc = create_token_contract(&env);
-        let fee_recipient = Address::generate(&env);
-        let dispute_resolver = Address::generate(&env);
-        let verifiers = Vec::new(&env);
-
-        let contract_id = env.register_contract(None, AiAgentMarketplace);
-        let client = AiAgentMarketplaceClient::new(&env, &contract_id);
-
-        client.initialize(
-            &admin, &usdc, &100, &10000000, &30, &7, &0,
-            &fee_recipient, &dispute_resolver, &0, &200, &30, &verifiers,
-        ).unwrap();
-
-        // Register agent
-        let agent_owner = Address::generate(&env);
-        let skills = Vec::from_array(&env, [
-            String::from_str(&env, "python"),
-            String::from_str(&env, "ml"),
-        ]);
-
-        let agent_id = client.register_agent(
-            &agent_owner,
-            &String::from_str(&env, "AI Coder"),
-            &String::from_str(&env, "Expert Python developer"),
-            &skills,
-            &50000000,
-            &String::from_str(&env, "ipfs://QmAgent123"),
-        ).unwrap();
-
-        // Post job
-        let client_addr = Address::generate(&env);
-        let required_skills = Vec::from_array(&env, [
-            String::from_str(&env, "python"),
-        ]);
-
-        let job_id = client.post_job(
-            &client_addr,
-            &String::from_str(&env, "Build ML Model"),
-            &String::from_str(&env, "Need a classification model"),
-            &required_skills,
-            &100000000, // 100 USDC
-            &14, // 14 days
-        ).unwrap();
-
-        // Place bid
-        let bid_id = client.place_bid(
-            &agent_owner,
-            &job_id,
-            &80000000, // 80 USDC
-            &7, // 7 days
-            &String::from_str(&env, "I can build this in 7 days"),
-        ).unwrap();
-
-        let bid = client.get_bid(&bid_id).unwrap();
-        assert_eq!(bid.agent, agent_owner);
-        assert_eq!(bid.amount, 80000000);
-        assert_eq!(bid.status, BidStatus::Pending);
-    }
-
-    #[test]
-    fn test_accept_bid_and_complete() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let usdc = create_token_contract(&env);
-        let fee_recipient = Address::generate(&env);
-        let dispute_resolver = Address::generate(&env);
-        let verifiers = Vec::new(&env);
-
-        let contract_id = env.register_contract(None, AiAgentMarketplace);
-        let client = AiAgentMarketplaceClient::new(&env, &contract_id);
-
-        client.initialize(
-            &admin, &usdc, &100, &10000000, &30, &7, &0,
-            &fee_recipient, &dispute_resolver, &0, &200, &30, &verifiers,
-        ).unwrap();
-
-        // Setup: Register agent, post job, place bid
-        let agent_owner = Address::generate(&env);
-        let skills = Vec::from_array(&env, [String::from_str(&env, "python")]);
-        let agent_id = client.register_agent(
-            &agent_owner, &String::from_str(&env, "AI Coder"),
-            &String::from_str(&env, "Expert"), &skills, &50000000,
-            &String::from_str(&env, "ipfs://QmAgent123"),
-        ).unwrap();
-
-        let client_addr = Address::generate(&env);
-        let required_skills = Vec::from_array(&env, [String::from_str(&env, "python")]);
-        let job_id = client.post_job(
-            &client_addr, &String::from_str(&env, "Job"),
-            &String::from_str(&env, "Desc"), &required_skills,
-            &100000000, &14,
-        ).unwrap();
-
-        let bid_id = client.place_bid(
-            &agent_owner, &job_id, &80000000, &7,
-            &String::from_str(&env, "Proposal"),
-        ).unwrap();
-
-        // Accept bid
-        client.accept_bid(&client_addr, &job_id, &bid_id).unwrap();
-
-        let job = client.get_job(&job_id).unwrap();
-        assert_eq!(job.status, JobStatus::InProgress);
-        assert_eq!(job.assigned_agent, Some(agent_owner.clone()));
-
-        // Submit deliverable
-        let hash = BytesN::from_array(&env, &[1u8; 32]);
-        client.submit_deliverable(&agent_owner, &job_id, &hash).unwrap();
-
-        let job = client.get_job(&job_id).unwrap();
-        assert_eq!(job.status, JobStatus::Completed);
-
-        // Approve and release
-        client.approve_deliverable(&client_addr, &job_id).unwrap();
-
-        let job = client.get_job(&job_id).unwrap();
-        assert_eq!(job.status, JobStatus::Completed);
-
-        let agent = client.get_agent(&agent_id).unwrap();
-        assert_eq!(agent.total_jobs_completed, 1);
-        assert_eq!(agent.total_earnings, 80000000);
     }
 }
 

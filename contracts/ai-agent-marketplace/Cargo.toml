@@ -10,3 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { version = "21.7.7", features = ["alloc", "testutils"] }
 soroban-token-sdk = "21.7.7"
+
+[patch.crates-io]
+soroban-env-host = { version = "21.2.2" }
+soroban-env-common = { version = "21.2.2" }
