@@ -170,11 +170,18 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # ========== END-TO-END TESTS ==========
+  // ========== END-TO-END TESTS ==========
   # Runs Playwright against the Vite dev server. It is intentionally NOT gated
   # on `frontend-build`/`frontend-lint`: the e2e suite drives the dev server
   # rather than the production build artifact, so it can run independently and
   # still validate the core user flows.
+  #
+  # Spec coverage:
+  #   landing.spec.ts       - hero section and CTA navigation
+  #   marketplace.spec.ts   - agent cards, job tabs, search filtering
+  #   wallet-gate.spec.ts   - unauthenticated route guards
+  #   agent-profile.spec.ts - /agent/:id profile rendering
+  #   navigation.spec.ts    - smoke tests for all top-level routes
   frontend-e2e:
     name: Frontend E2E (Playwright)
     runs-on: ubuntu-latest
