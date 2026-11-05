@@ -1,0 +1,10 @@
+# pnpm configuration.
+#
+# pnpm 10+ blocks dependency install scripts by default and exits non-zero
+# (ERR_PNPM_IGNORED_BUILDS) when any are skipped, which would break
+# `pnpm install --frozen-lockfile` in CI. `esbuild` — a transitive dependency of
+# Vite — ships a postinstall that selects its platform binary, so we explicitly
+# allow it here. The pinned packageManager version in package.json guarantees
+# this setting is read.
+allowBuilds:
+  esbuild: true
