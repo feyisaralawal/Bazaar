@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/hooks/useTheme';
+import { useProfile } from '@/hooks/useProfile';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -13,16 +14,47 @@ import {
   Wallet, User, Shield, Settings as SettingsIcon, Bell, Key, 
   LogOut, Moon, Sun, Globe, ShieldCheck, 
   CreditCard, History, Download, Upload, Eye, EyeOff,
-  Activity, FileText, Star, CheckCircle
+  Activity, FileText, Star, CheckCircle, Save
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, disconnect, balance } = useWallet();
+  const { publicKey, isConnected, disconnect, usdcBalance, xlmBalance } = useWallet();
   const { getContractClient } = useStellar();
   const [activeTab, setActiveTab] = useState<'profile' | 'wallet' | 'notifications' | 'security' | 'appearance'>('profile');
   const { theme, setTheme, isDark } = useTheme();
+
+  // ── Off-chain profile (localStorage) ──────────────────────────────────────
+  const { profile, saveProfile } = useProfile(publicKey ?? null);
+  // Local draft – mirrors the saved profile and allows cancel without writing
+  const [draft, setDraft] = useState({ displayName: '', email: '', bio: '' });
+  // Sync draft when the saved profile loads (e.g. on mount or wallet switch)
+  React.useEffect(() => {
+    setDraft({
+      displayName: profile.displayName,
+      email: profile.email,
+      bio: profile.bio,
+    });
+  }, [profile.displayName, profile.email, profile.bio]);
+
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  const handleSaveProfile = () => {
+    saveProfile(draft);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2500);
+  };
+
+  const handleCancelProfile = () => {
+    setDraft({
+      displayName: profile.displayName,
+      email: profile.email,
+      bio: profile.bio,
+    });
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
   const [notifications, setNotifications] = useState({
     emailJobUpdates: true,
     emailBidUpdates: true,
@@ -101,14 +133,41 @@ export const Settings: React.FC = () => {
 
                 <div className="border-t pt-6 space-y-4">
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Input label="Display Name" placeholder="Your Name" defaultValue="" />
-                    <Input label="Email" type="email" placeholder="you@example.com" defaultValue="" />
+                    <Input
+                      label="Display Name"
+                      placeholder="Your Name"
+                      value={draft.displayName}
+                      onChange={(e) => setDraft((d) => ({ ...d, displayName: e.target.value }))}
+                    />
+                    <Input
+                      label="Email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={draft.email}
+                      onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                    />
                   </div>
-                  <Textarea label="Bio" placeholder="Tell others about yourself..." rows={3} defaultValue="" />
-                  <div className="flex gap-2">
-                    <Button variant="outline">Save Changes</Button>
-                    <Button variant="ghost">Cancel</Button>
+                  <Textarea
+                    label="Bio"
+                    placeholder="Tell others about yourself..."
+                    rows={3}
+                    value={draft.bio}
+                    onChange={(e) => setDraft((d) => ({ ...d, bio: e.target.value }))}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleSaveProfile} className="gap-2">
+                      <Save className="h-4 w-4" />
+                      {profileSaved ? 'Saved ✓' : 'Save Changes'}
+                    </Button>
+                    <Button variant="ghost" onClick={handleCancelProfile}>
+                      Cancel
+                    </Button>
                   </div>
+                  {profileSaved && (
+                    <p className="text-sm text-green-500">
+                      Profile saved locally. Your display name will now appear in the nav.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -139,15 +198,19 @@ export const Settings: React.FC = () => {
                   <Wallet className="h-5 w-5" />
                   Wallet Balance
                 </CardTitle>
-                <CardDescription>Your USDC balance on Stellar network</CardDescription>
+                <CardDescription>Your balances on the Stellar network</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="p-6 bg-gradient-to-r from-primary/10 to-stellar/10 rounded-xl">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">USDC Balance</p>
-                      <p className="text-4xl font-bold text-foreground">${parseFloat(balance || '0').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                      <p className="text-sm text-muted-foreground mt-1">≈ ${(parseFloat(balance || '0') * 1.0).toLocaleString()} USD</p>
+                      <p className="text-4xl font-bold text-foreground">
+                        ${parseFloat(usdcBalance || '0').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        XLM: {parseFloat(xlmBalance || '0').toLocaleString(undefined, { minimumFractionDigits: 7, maximumFractionDigits: 7 })} XLM
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm">

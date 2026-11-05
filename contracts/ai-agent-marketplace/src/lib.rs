@@ -171,6 +171,14 @@ pub struct Config {
     pub platform_fee_bps_dispute: u32, // Higher fee for disputes
     pub escrow_expiry_days: u64,
     pub skill_verifiers: Vec<Address>,
+    /// When `true`, every required skill on a job must be verified on the
+    /// bidding agent before the bid is accepted.  When `false`, unverified
+    /// agents may bid freely; skills are treated as self-attested and the
+    /// `skills_verified` map is purely informational.
+    ///
+    /// Default for new deployments should be `false` so that new agents are
+    /// not blocked from the marketplace before a verifier network exists.
+    pub require_skill_verification: bool,
 }
 
 #[contracttype]
@@ -240,6 +248,13 @@ pub enum Error {
     AgentReputationTooLow = 18,
     InsufficientSkills = 19,
     SkillNotVerified = 20,
+    /// Returned by `place_bid` when `config.require_skill_verification = true`
+    /// and the bidding agent has not had the required skill verified by an
+    /// authorized verifier.  Distinct from `SkillNotVerified` (which is kept
+    /// for backward-compatibility) so callers can tell the difference between
+    /// "skill not in agent's list" vs. "skill present but unverified while
+    /// enforcement is enabled".
+    SkillVerificationRequired = 52,
     EscrowNotFound = 21,
     EscrowNotFunded = 22,
     EscrowAlreadyReleased = 23,
@@ -295,6 +310,7 @@ impl AiAgentMarketplace {
         platform_fee_bps_dispute: u32,
         escrow_expiry_days: u64,
         skill_verifiers: Vec<Address>,
+        require_skill_verification: bool,
     ) -> Result<(), Error> {
         if Self::has_config(&env) {
             return Err(Error::AlreadyInitialized);
@@ -318,6 +334,7 @@ impl AiAgentMarketplace {
             platform_fee_bps_dispute,
             escrow_expiry_days,
             skill_verifiers,
+            require_skill_verification,
         };
 
         env.storage().instance().set(&DataKey::Config, &config);
@@ -511,28 +528,28 @@ impl AiAgentMarketplace {
             return Err(Error::InvalidSkill);
         }
 
-        // Allow re-verification when a previous verification has expired.
+        let now = env.ledger().timestamp();
+
         if agent.skills_verified.get(skill.clone()).unwrap_or(false) {
-            // Check if the existing verification has expired.
+            // Allow re-verification if the existing verification has expired.
             let agent_verifications: Vec<u64> = env.storage().instance()
                 .get(&DataKey::SkillVerificationsByAgent(agent.owner.clone()))
                 .unwrap_or(Vec::new(&env));
-            let mut has_valid = false;
-            for vid in agent_verifications.iter() {
-                if let Some(v) = env.storage().instance().get(&DataKey::SkillVerification(*vid)) {
-                    if v.skill == skill && v.expires_at > now {
-                        has_valid = true;
-                        break;
-                    }
+            let mut is_expired = false;
+            for ver_id in agent_verifications.iter() {
+                let ver: SkillVerification = env.storage().instance()
+                    .get(&DataKey::SkillVerification(ver_id))
+                    .ok_or(Error::VerificationExpired)?;
+                if ver.skill == skill && now > ver.expires_at {
+                    is_expired = true;
+                    break;
                 }
             }
-            if has_valid {
+            if !is_expired {
                 return Err(Error::SkillAlreadyVerified);
             }
-            // Existing verification expired — allow re-verification by overwriting.
         }
 
-        let now = env.ledger().timestamp();
         if expires_at <= now {
             return Err(Error::InvalidDeadline);
         }
@@ -718,9 +735,14 @@ impl AiAgentMarketplace {
             if !agent.skills.contains(&required_skill) {
                 return Err(Error::InsufficientSkills);
             }
-            // Check if skill is verified
-            if !agent.skills_verified.get(required_skill.clone()).unwrap_or(false) {
-                return Err(Error::SkillNotVerified);
+            // Enforce skill verification only when the platform operator has
+            // enabled hard verification mode.  When disabled, unverified agents
+            // may bid; the `skills_verified` map is still shown on the agent
+            // profile as a trust signal but does not gate participation.
+            if config.require_skill_verification
+                && !agent.skills_verified.get(required_skill.clone()).unwrap_or(false)
+            {
+                return Err(Error::SkillVerificationRequired);
             }
         }
 
@@ -1646,6 +1668,7 @@ impl AiAgentMarketplace {
         platform_fee_bps_dispute: Option<u32>,
         escrow_expiry_days: Option<u64>,
         skill_verifiers: Option<Vec<Address>>,
+        require_skill_verification: Option<bool>,
     ) -> Result<(), Error> {
         admin.require_auth();
 
@@ -1689,6 +1712,9 @@ impl AiAgentMarketplace {
         }
         if let Some(verifiers) = skill_verifiers {
             config.skill_verifiers = verifiers;
+        }
+        if let Some(flag) = require_skill_verification {
+            config.require_skill_verification = flag;
         }
 
         env.storage().instance().set(&DataKey::Config, &config);
@@ -1735,6 +1761,12 @@ impl AiAgentMarketplace {
         Ok(())
     }
 
+    // ========== Helper Functions ==========
+}
+
+// Private helpers — separate impl block so they are not exposed as contract
+// entry-points by the #[contractimpl] macro above.
+impl AiAgentMarketplace {
     // ========== Helper Functions ==========
 
     /// Slice a Vec<u64> from `offset` up to `offset + limit`.

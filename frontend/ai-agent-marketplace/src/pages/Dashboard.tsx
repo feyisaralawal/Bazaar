@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useStellar } from '@/contexts/StellarContext';
-import type { Agent, Bid, Job, PlatformStats } from '@/lib/types';
+import type { Agent, Bid, Job, PlatformStats, Review } from '@/lib/types';
 import { QueryError } from '@/components/ui/QueryError';
 import { formatPrice, getSkillColor } from '@/pages/Marketplace';
 import { clsx } from 'clsx';
@@ -162,6 +162,54 @@ export const Dashboard: React.FC = () => {
     staleTime: 1000 * 60 * 10,
   });
 
+  // ── Reviews received (paginated) ────────────────────────────────────────
+  const {
+    data: reviewsPages,
+    isLoading: reviewsLoading,
+    error: reviewsError,
+    refetch: refetchReviews,
+    fetchNextPage: fetchNextReviewsPage,
+    hasNextPage: hasNextReviewsPage,
+    isFetchingNextPage: isFetchingNextReviewsPage,
+  } = useInfiniteQuery<Review[]>({
+    queryKey: ['myReviews', publicKey],
+    queryFn: async ({ pageParam }) => {
+      const offset = (pageParam as number) ?? 0;
+      const client = getContractClient();
+      if (!client) {
+        throw new Error('Not connected to the marketplace contract. Configure it in Settings.');
+      }
+      const ids: number[] = await client.getReviewsByReviewee(publicKey, offset, PAGE_SIZE);
+      return client.getReviewsByIds(ids);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === PAGE_SIZE
+        ? allPages.reduce((sum, p) => sum + p.length, 0)
+        : undefined,
+    // Only fetch when the user actually opens the Reviews tab
+    enabled: activeTab === 'reviews',
+  });
+
+  const myReviews: Review[] = reviewsPages?.pages.flat() ?? [];
+
+  // Infinite-scroll sentinel for reviews
+  const reviewsSentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextReviewsPage && !isFetchingNextReviewsPage) {
+          fetchNextReviewsPage();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    if (reviewsSentinelRef.current) observer.observe(reviewsSentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasNextReviewsPage, isFetchingNextReviewsPage, fetchNextReviewsPage]);
+  // ────────────────────────────────────────────────────────────────────────
+
 
 
   const tabsList = [
@@ -169,7 +217,7 @@ export const Dashboard: React.FC = () => {
     { id: 'myJobs', label: 'My Jobs', count: myJobs.length, icon: FileText },
     { id: 'myBids', label: 'My Bids', count: myBids.length, icon: Send },
     { id: 'myAgent', label: 'My Agent', icon: Activity },
-    { id: 'reviews', label: 'Reviews', icon: MessageSquare },
+    { id: 'reviews', label: 'Reviews', count: myReviews.length || undefined, icon: MessageSquare },
   ];
 
   return (
@@ -439,13 +487,88 @@ export const Dashboard: React.FC = () => {
 
         {activeTab === 'reviews' && (
           <div className="space-y-4">
-            <Card>
-              <CardContent className="p-8 text-center">
-                <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold mb-1">Reviews</h3>
-                <p className="text-muted-foreground mb-4">Reviews from completed jobs will appear here</p>
-              </CardContent>
-            </Card>
+            {reviewsLoading ? (
+              /* Skeleton while loading */
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-5">
+                      <div className="flex gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="h-5 w-1/3 animate-pulse bg-muted rounded" />
+                          <div className="h-4 w-3/4 animate-pulse bg-muted rounded" />
+                          <div className="h-4 w-1/2 animate-pulse bg-muted rounded" />
+                        </div>
+                        <div className="w-16 h-8 animate-pulse bg-muted rounded" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : reviewsError ? (
+              <QueryError
+                message={(reviewsError as Error)?.message}
+                onRetry={() => refetchReviews()}
+              />
+            ) : myReviews.length === 0 ? (
+              <EmptyState
+                icon={MessageSquare}
+                title="No Reviews Yet"
+                description="Reviews from clients after completed jobs will appear here."
+                action={
+                  <Link to="/marketplace">
+                    <Button>Browse Marketplace</Button>
+                  </Link>
+                }
+              />
+            ) : (
+              <>
+                {/* Average rating summary */}
+                {myReviews.length > 0 && (() => {
+                  const avg = myReviews.reduce((sum, r) => sum + r.rating, 0) / myReviews.length;
+                  return (
+                    <Card>
+                      <CardContent className="p-5 flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={clsx(
+                                'h-5 w-5',
+                                star <= Math.round(avg)
+                                  ? 'fill-yellow-400 text-yellow-400'
+                                  : 'text-muted-foreground',
+                              )}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-2xl font-bold">{avg.toFixed(1)}</span>
+                        <span className="text-muted-foreground text-sm">
+                          from {myReviews.length} review{myReviews.length !== 1 ? 's' : ''}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+
+                {myReviews.map((review) => (
+                  <ReviewCard key={review.id} review={review} />
+                ))}
+
+                {/* Infinite-scroll sentinel */}
+                <div ref={reviewsSentinelRef} className="flex justify-center py-4" aria-hidden="true">
+                  {isFetchingNextReviewsPage && (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Loading more reviews…
+                    </div>
+                  )}
+                  {!hasNextReviewsPage && myReviews.length > 0 && (
+                    <p className="text-sm text-muted-foreground">All reviews loaded</p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -612,6 +735,50 @@ function BidCard({ bid }: { bid: Bid }) {
           <div className="text-right">
             <p className="text-sm text-muted-foreground">Submitted</p>
             <p className="font-medium">{formatDistanceToNow(new Date(bid.submittedAt * 1000), { addSuffix: true })}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReviewCard({ review }: { review: Review }) {
+  const shortReviewer = `${review.reviewer.slice(0, 6)}...${review.reviewer.slice(-4)}`;
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              {/* Star rating */}
+              <div className="flex items-center gap-0.5" aria-label={`${review.rating} out of 5 stars`}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={clsx(
+                      'h-4 w-4',
+                      star <= review.rating
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-muted-foreground',
+                    )}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+              <span className="font-semibold text-sm">{review.rating}/5</span>
+            </div>
+            <p className="text-sm text-foreground">{review.comment}</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              From{' '}
+              <span className="font-mono">{shortReviewer}</span>
+              {' · '}
+              Job #{review.jobId}
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-sm text-muted-foreground">
+              {formatDistanceToNow(new Date(review.createdAt * 1000), { addSuffix: true })}
+            </p>
           </div>
         </div>
       </CardContent>
