@@ -527,11 +527,28 @@ impl AiAgentMarketplace {
             return Err(Error::InvalidSkill);
         }
 
+        let now = env.ledger().timestamp();
+
         if agent.skills_verified.get(skill.clone()).unwrap_or(false) {
-            return Err(Error::SkillAlreadyVerified);
+            // Allow re-verification if the existing verification has expired.
+            let agent_verifications: Vec<u64> = env.storage().instance()
+                .get(&DataKey::SkillVerificationsByAgent(agent.owner.clone()))
+                .unwrap_or(Vec::new(&env));
+            let mut is_expired = false;
+            for ver_id in agent_verifications.iter() {
+                let ver: SkillVerification = env.storage().instance()
+                    .get(&DataKey::SkillVerification(ver_id))
+                    .ok_or(Error::VerificationExpired)?;
+                if ver.skill == skill && now > ver.expires_at {
+                    is_expired = true;
+                    break;
+                }
+            }
+            if !is_expired {
+                return Err(Error::SkillAlreadyVerified);
+            }
         }
 
-        let now = env.ledger().timestamp();
         if expires_at <= now {
             return Err(Error::InvalidDeadline);
         }
