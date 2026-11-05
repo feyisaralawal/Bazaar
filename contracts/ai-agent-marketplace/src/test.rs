@@ -273,7 +273,10 @@ fn test_complete_job_flow() {
     let agent = marketplace.get_agent(&agent_id);
     assert_eq!(agent.total_jobs_completed, 1);
     assert_eq!(agent.total_earnings, 80_000_000);
-    assert_eq!(agent.reputation, 5); // +5 for completion
+    // Reputation is only updated by leave_review, not by approve_deliverable.
+    // The agent starts with reputation 0 and no review has been left yet,
+    // so it should still be 0 here.
+    assert_eq!(agent.reputation, 0);
 
     // Check USDC transferred
     assert_eq!(usdc_client.balance(&agent_owner), 80_000_000);

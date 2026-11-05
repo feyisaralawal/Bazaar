@@ -286,6 +286,7 @@ pub enum Error {
     EscrowAlreadyRefunded = 49,
     InvalidDisputeEvidence = 50,
     ContractPaused = 51,
+    CannotBidOnOwnJob = 52,
 }
 
 #[contract]
@@ -663,6 +664,19 @@ impl AiAgentMarketplace {
             return Err(Error::JobNotOpen);
         }
 
+        // Reject all pending bids so bidders know the job is no longer available.
+        let existing_bids: Vec<u64> = env.storage().instance()
+            .get(&DataKey::BidsByJob(job_id))
+            .unwrap_or(Vec::new(&env));
+        for bid_id in existing_bids.iter() {
+            if let Ok(mut bid) = Self::get_bid(&env, *bid_id) {
+                if bid.status == BidStatus::Pending {
+                    bid.status = BidStatus::Rejected;
+                    env.storage().instance().set(&DataKey::Bid(*bid_id), &bid);
+                }
+            }
+        }
+
         job.status = JobStatus::Cancelled;
         env.storage().instance().set(&DataKey::Job(job_id), &job);
 
@@ -695,6 +709,11 @@ impl AiAgentMarketplace {
 
         if env.ledger().timestamp() > job.deadline {
             return Err(Error::JobExpired);
+        }
+
+        // An agent owner cannot bid on their own job (if the client is also an agent).
+        if job.client == agent_owner {
+            return Err(Error::CannotBidOnOwnJob);
         }
 
         // Check if agent exists and is active
