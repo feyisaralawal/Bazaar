@@ -57,13 +57,8 @@ export interface Job {
   deadline: number;
   status: JobStatus;
   assignedAgent: string | null;
-  /**
-   * Bids attached to the on-chain Job struct. The contract stores bids in a
-   * separate index (`BidsByJob`) and does NOT push them into this Vec, so this
-   * is almost always empty. Pages that need bids should fetch them via
-   * `client.getBidsByJob()` instead.
-   */
-  bids: Bid[];
+  // Bids are stored separately on-chain under the BidsByJob index.
+  // Use client.getBidsByJob(jobId, offset, limit) to fetch them.
   escrowAmount: number;
   /**
    * Unix timestamp (seconds) the escrow was created. Not part of the contract
