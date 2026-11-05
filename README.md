@@ -447,9 +447,23 @@ pnpm test
 # E2E tests (Playwright)
 pnpm test:e2e
 
+# E2E tests with UI reporter (local debugging)
+pnpm exec playwright test --reporter=html && pnpm exec playwright show-report
+
 # Coverage
 pnpm test:coverage
 ```
+
+**E2E Test Coverage** (`e2e/`):
+| Spec file | What it covers |
+|-----------|---------------|
+| `landing.spec.ts` | Hero renders, CTA navigates to /marketplace, page title set |
+| `marketplace.spec.ts` | Agent cards, job tabs, search by name, search by skill, tab switching |
+| `wallet-gate.spec.ts` | /create-job, /dashboard, /register-agent gates; fallback CTA navigation |
+
+The E2E suite uses a fixture-backed mock injected via
+`window.__E2E_MARKETPLACE_CLIENT__` (see `e2e/fixtures.ts`) so no live
+Soroban RPC or Freighter wallet is required. Run in any environment.
 
 ---
 
