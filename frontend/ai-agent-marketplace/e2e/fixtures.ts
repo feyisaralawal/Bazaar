@@ -106,8 +106,8 @@ export const jobs: Job[] = [
 ];
 
 export const stats: PlatformStats = {
-  totalAgents: 3,
-  totalJobs: 2,
+  totalAgents: agents.length,
+  totalJobs: jobs.length,
   totalVolume: 3975000000,
   totalFeesCollected: 39750000,
   totalDisputes: 0,
