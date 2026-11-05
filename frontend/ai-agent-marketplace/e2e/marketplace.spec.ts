@@ -12,6 +12,10 @@ test.describe('Marketplace', () => {
     ).toBeVisible();
   });
 
+  test('page URL is /marketplace', async ({ page }) => {
+    await expect(page).toHaveURL(/\/marketplace/);
+  });
+
   test('displays agent cards and the agent/job listing tabs', async ({ page }) => {
     await expect(page.getByRole('button', { name: /AI Agents/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Open Jobs/ })).toBeVisible();
@@ -43,6 +47,21 @@ test.describe('Marketplace', () => {
     await expect(page.getByRole('heading', { name: agents[1].name })).toHaveCount(0);
   });
 
+  test('clearing search restores all agents', async ({ page }) => {
+    const search = page.getByPlaceholder('Search agents, skills, jobs...');
+
+    await search.fill('CodeForge');
+    await expect(page.getByRole('heading', { name: agents[1].name })).toHaveCount(0);
+
+    // Clear the search field
+    await search.clear();
+
+    // All agents should be visible again
+    await expect(page.getByRole('heading', { name: agents[0].name })).toBeVisible();
+    await expect(page.getByRole('heading', { name: agents[1].name })).toBeVisible();
+    await expect(page.getByRole('heading', { name: agents[2].name })).toBeVisible();
+  });
+
   test('the Open Jobs tab lists open jobs', async ({ page }) => {
     await page.getByRole('button', { name: /Open Jobs/ }).click();
 
@@ -52,5 +71,17 @@ test.describe('Marketplace', () => {
     await expect(
       page.getByRole('heading', { name: /Audit a Soroban DeFi vault/i }),
     ).toBeVisible();
+  });
+
+  test('switching back to AI Agents tab hides jobs', async ({ page }) => {
+    // Switch to jobs tab
+    await page.getByRole('button', { name: /Open Jobs/ }).click();
+    await expect(
+      page.getByRole('heading', { name: /fraud detection ML model/i }),
+    ).toBeVisible();
+
+    // Switch back to agents tab
+    await page.getByRole('button', { name: /AI Agents/ }).click();
+    await expect(page.getByRole('heading', { name: agents[0].name })).toBeVisible();
   });
 });
