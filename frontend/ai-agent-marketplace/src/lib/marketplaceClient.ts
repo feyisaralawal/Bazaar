@@ -211,7 +211,6 @@ function mapJob(raw: Native): Job {
     deadline: toNum(raw.deadline),
     status: (enumVal(raw.status) as Job['status']) || 'Open',
     assignedAgent: optionVal<string>(raw.assigned_agent, toStr),
-    bids: Array.isArray(raw.bids) ? (raw.bids as Native[]).map(mapBid) : [],
     escrowAmount: toNum(raw.escrow_amount),
     escrowCreatedAt: null, // set separately from the linked Escrow if fetched
     createdAt: toNum(raw.created_at),
