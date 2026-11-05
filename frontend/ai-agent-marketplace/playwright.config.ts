@@ -10,6 +10,13 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Run locally with `pnpm test:e2e`; in CI the browsers are installed by the
  * `frontend-e2e` job in .github/workflows/ci-cd.yml.
+ *
+ * Spec files live in ./e2e/:
+ *   landing.spec.ts        - hero section and CTA navigation
+ *   marketplace.spec.ts    - agent cards, job tabs, and search filtering
+ *   wallet-gate.spec.ts    - unauthenticated route guards
+ *   agent-profile.spec.ts  - /agent/:id profile rendering
+ *   navigation.spec.ts     - smoke tests for all top-level routes
  */
 export default defineConfig({
   testDir: './e2e',
