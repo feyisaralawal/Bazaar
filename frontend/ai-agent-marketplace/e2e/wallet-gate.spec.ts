@@ -29,4 +29,27 @@ test.describe('Wallet-gated routes', () => {
       page.getByText('Connect your Freighter wallet to access your dashboard'),
     ).toBeVisible();
   });
+
+  test('navigating to /register-agent without a wallet shows a connect gate', async ({
+    page,
+  }) => {
+    await page.goto('/register-agent');
+
+    // The register-agent page also gates on wallet connection
+    await expect(
+      page.getByRole('heading', { name: 'Connect Wallet Required' }),
+    ).toBeVisible();
+  });
+
+  test('/create-job gate has a Go to Marketplace fallback button', async ({
+    page,
+  }) => {
+    await page.goto('/create-job');
+
+    const fallback = page.getByRole('button', { name: /Go to Marketplace/i });
+    await expect(fallback).toBeVisible();
+
+    await fallback.click();
+    await expect(page).toHaveURL(/\/marketplace/);
+  });
 });
