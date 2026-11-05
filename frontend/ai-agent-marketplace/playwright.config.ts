@@ -35,6 +35,9 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Firefox and WebKit can be enabled for broader coverage:
+    // { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    // { name: 'webkit',  use: { ...devices['Desktop Safari']  } },
   ],
   webServer: {
     command: 'pnpm run dev -- --port 5173 --strictPort',
