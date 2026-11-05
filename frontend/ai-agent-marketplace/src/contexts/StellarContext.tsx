@@ -192,10 +192,23 @@ export const StellarProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Typed contract client built from the current `invokeContract`. Returns
   // null while not connected so pages can show a "connect" prompt instead of
   // a generic fetch error.
-  const contractClient = useMemo<MarketplaceClient | null>(
-    () => (isConnected && invokeContract ? new MarketplaceClient(invokeContract, invokeContractWrite) : null),
-    [isConnected, invokeContract, invokeContractWrite],
-  );
+  const contractClient = useMemo<MarketplaceClient | null>(() => {
+    // E2E test seam: the Playwright harness injects a fixture-backed contract
+    // client via `window.__E2E_MARKETPLACE_CLIENT__` (see
+    // frontend/ai-agent-marketplace/e2e/fixtures.ts) so the marketplace can be
+    // exercised in CI without a live Soroban RPC. The global is only ever set
+    // by the e2e setup and is never present in production or normal
+    // development, so this branch is inert outside of `pnpm test:e2e`.
+    if (typeof window !== 'undefined') {
+      const injected = (window as Window & {
+        __E2E_MARKETPLACE_CLIENT__?: unknown;
+      }).__E2E_MARKETPLACE_CLIENT__;
+      if (injected) return injected as MarketplaceClient;
+    }
+    return isConnected && invokeContract
+      ? new MarketplaceClient(invokeContract, invokeContractWrite)
+      : null;
+  }, [isConnected, invokeContract, invokeContractWrite]);
 
   useEffect(() => {
     const saved = localStorage.getItem('stellar-contract-config');

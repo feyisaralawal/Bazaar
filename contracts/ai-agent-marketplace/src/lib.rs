@@ -45,7 +45,8 @@ pub struct Job {
     pub deadline: u64,
     pub status: JobStatus,
     pub assigned_agent: Option<Address>,
-    pub bids: Vec<Bid>,
+    // NOTE: bids are stored separately under DataKey::Bid(bid_id) and indexed
+    // via DataKey::BidsByJob(job_id).  Use get_bids_by_job() to fetch them.
     pub escrow_amount: i128,
     pub created_at: u64,
     pub completed_at: Option<u64>,
@@ -621,7 +622,6 @@ impl AiAgentMarketplace {
             deadline,
             status: JobStatus::Open,
             assigned_agent: None,
-            bids: Vec::new(&env),
             escrow_amount: 0,
             created_at: now,
             completed_at: None,

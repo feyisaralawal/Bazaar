@@ -5,6 +5,11 @@
  * `contracts/ai-agent-marketplace/src/lib.rs`) but use the camelCase naming
  * convention the UI expects. The conversion from snake_case ScVal maps happens
  * in `marketplaceClient.ts`.
+ *
+ * Notable divergence from older versions of this file:
+ * - `Job.bids` has been removed. The on-chain Job struct never populated the
+ *   inline bids Vec (bids live under DataKey::BidsByJob). Use
+ *   `MarketplaceClient.getBidsByJob()` to fetch real bid data.
  */
 
 export type JobStatus =
@@ -57,13 +62,8 @@ export interface Job {
   deadline: number;
   status: JobStatus;
   assignedAgent: string | null;
-  /**
-   * Bids attached to the on-chain Job struct. The contract stores bids in a
-   * separate index (`BidsByJob`) and does NOT push them into this Vec, so this
-   * is almost always empty. Pages that need bids should fetch them via
-   * `client.getBidsByJob()` instead.
-   */
-  bids: Bid[];
+  // Bids are stored separately on-chain under the BidsByJob index.
+  // Use client.getBidsByJob(jobId, offset, limit) to fetch them.
   escrowAmount: number;
   /**
    * Unix timestamp (seconds) the escrow was created. Not part of the contract

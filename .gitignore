@@ -8,3 +8,9 @@ node_modules/
 # Local Environment & Contract IDs
 .env.local
 .contract-id-*
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+blob-report/

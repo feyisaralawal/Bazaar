@@ -170,6 +170,53 @@ jobs:
           path: dist/
           retention-days: 7
 
+  // ========== END-TO-END TESTS ==========
+  # Runs Playwright against the Vite dev server. It is intentionally NOT gated
+  # on `frontend-build`/`frontend-lint`: the e2e suite drives the dev server
+  # rather than the production build artifact, so it can run independently and
+  # still validate the core user flows.
+  #
+  # Spec coverage:
+  #   landing.spec.ts       - hero section and CTA navigation
+  #   marketplace.spec.ts   - agent cards, job tabs, search filtering
+  #   wallet-gate.spec.ts   - unauthenticated route guards
+  #   agent-profile.spec.ts - /agent/:id profile rendering
+  #   navigation.spec.ts    - smoke tests for all top-level routes
+  frontend-e2e:
+    name: Frontend E2E (Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/ai-agent-marketplace
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        run: corepack enable pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/ai-agent-marketplace/playwright-report/
+          retention-days: 7
+
   # ========== DEPLOY ==========
   deploy-preview:
     name: Deploy Preview

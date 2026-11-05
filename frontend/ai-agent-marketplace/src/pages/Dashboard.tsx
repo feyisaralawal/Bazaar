@@ -675,9 +675,9 @@ function JobCard({ job, isClient }: { job: Job; isClient: boolean }) {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
-          {job.status === 'Open' && job.bids.length > 0 && (
+          {job.status === 'Open' && (
             <Link to={`/job/${job.id}`}>
-              <Button variant="outline" size="sm">View {job.bids.length} Bids</Button>
+              <Button variant="outline" size="sm">View Bids</Button>
             </Link>
           )}
           {job.status === 'InProgress' && !job.deliverableHash && (
