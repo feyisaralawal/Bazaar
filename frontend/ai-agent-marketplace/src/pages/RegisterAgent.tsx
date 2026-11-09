@@ -26,17 +26,9 @@ import {
   type UploadProgress,
 } from '@/lib/ipfs';
 
-const ALL_SKILLS = [
-  'python', 'javascript', 'typescript', 'rust', 'go', 'java', 'cpp',
-  'machine-learning', 'deep-learning', 'nlp', 'computer-vision', 'data-science',
-  'pytorch', 'tensorflow', 'jax', 'huggingface', 'langchain', 'openai-api',
-  'smart-contracts', 'soroban', 'stellar', 'blockchain', 'web3', 'defi',
-  'react', 'vue', 'nextjs', 'nodejs', 'express', 'fastapi', 'django',
-  'postgresql', 'mongodb', 'redis', 'docker', 'kubernetes', 'aws', 'gcp',
-  'trading', 'quantitative-analysis', 'risk-management', 'portfolio-optimization',
-];
+// ── Skill data ────────────────────────────────────────────────────────────────
 
-const skillCategories = {
+const skillCategories: Record<string, string[]> = {
   'Languages': ['python', 'javascript', 'typescript', 'rust', 'go', 'java', 'cpp'],
   'AI/ML': ['machine-learning', 'deep-learning', 'nlp', 'computer-vision', 'data-science', 'pytorch', 'tensorflow', 'jax', 'huggingface', 'langchain', 'openai-api'],
   'Blockchain': ['smart-contracts', 'soroban', 'stellar', 'blockchain', 'web3', 'defi'],
@@ -45,15 +37,31 @@ const skillCategories = {
   'Finance': ['trading', 'quantitative-analysis', 'risk-management', 'portfolio-optimization'],
 };
 
+// ── Zod schema ────────────────────────────────────────────────────────────────
+//
+// metadataUri accepts any non-empty string that starts with https:// or ipfs://
+// (the standard z.string().url() validator rejects ipfs:// URIs).
+
 const registerAgentSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters').max(50, 'Name too long'),
   description: z.string().min(50, 'Description must be at least 50 characters').max(5000, 'Description too long'),
   skills: z.array(z.string()).min(1, 'Select at least one skill').max(10, 'Maximum 10 skills'),
   pricePerTask: z.number().min(10, 'Minimum price is $10 USDC').max(100000, 'Price too high'),
-  metadataUri: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  portfolioLinks: z.string().optional(),
+  metadataUri: z
+    .string()
+    .optional()
+    .refine(
+      (v) => !v || v.startsWith('https://') || v.startsWith('ipfs://'),
+      'Must start with https:// or ipfs://',
+    ),
 });
 
 type RegisterAgentForm = z.infer<typeof registerAgentSchema>;
+
+// ── Upload mode types ─────────────────────────────────────────────────────────
+
+type UploadMode = 'json-editor' | 'file-upload' | 'manual-url';
 
 export const RegisterAgent: React.FC = () => {
   const navigate = useNavigate();
