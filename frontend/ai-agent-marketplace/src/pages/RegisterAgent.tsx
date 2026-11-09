@@ -112,10 +112,80 @@ export const RegisterAgent: React.FC = () => {
   };
 
   const toggleCategory = (category: string) => {
-    setExpandedCategories(prev => 
-      prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
+    setExpandedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category],
     );
   };
+
+  // ── IPFS upload helpers ───────────────────────────────────────────────────
+
+  /** Build a metadata JSON object from the current form values. */
+  const buildMetadataJson = (): Record<string, unknown> => {
+    const portfolioLinks = getValues('portfolioLinks') ?? '';
+    return {
+      name: getValues('name'),
+      description: getValues('description'),
+      skills: selectedSkills,
+      pricePerTask: getValues('pricePerTask'),
+      portfolioLinks: portfolioLinks
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean),
+      createdAt: new Date().toISOString(),
+      version: '1.0',
+    };
+  };
+
+  const handleUploadJson = async () => {
+    if (!isIpfsConfigured()) {
+      alert('VITE_IPFS_API_KEY is not set. Add it to your .env.local file and restart the dev server.');
+      return;
+    }
+    setIpfsProgress({ percent: null, status: 'uploading' });
+    setUploadedCid(null);
+    try {
+      const metadata = buildMetadataJson();
+      const cid = await uploadJsonToIpfs(metadata, 'agent-metadata.json', setIpfsProgress);
+      setUploadedCid(cid);
+      setValue('metadataUri', cidToUri(cid), { shouldValidate: true });
+    } catch (err) {
+      console.error('IPFS JSON upload failed:', err);
+    }
+  };
+
+  const handleUploadFile = async () => {
+    if (!selectedFile) return;
+    if (!isIpfsConfigured()) {
+      alert('VITE_IPFS_API_KEY is not set. Add it to your .env.local file and restart the dev server.');
+      return;
+    }
+    setIpfsProgress({ percent: null, status: 'uploading' });
+    setUploadedCid(null);
+    try {
+      const cid = await uploadToIpfs(selectedFile, selectedFile.name, setIpfsProgress);
+      setUploadedCid(cid);
+      setValue('metadataUri', cidToUri(cid), { shouldValidate: true });
+    } catch (err) {
+      console.error('IPFS file upload failed:', err);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    setUploadedCid(null);
+    setIpfsProgress({ percent: null, status: 'idle' });
+  };
+
+  const resetUpload = () => {
+    setUploadedCid(null);
+    setIpfsProgress({ percent: null, status: 'idle' });
+    setSelectedFile(null);
+    setValue('metadataUri', '', { shouldValidate: false });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ── form submit ───────────────────────────────────────────────────────────
 
   const onSubmit = async (data: RegisterAgentForm) => {
     if (!publicKey) {
