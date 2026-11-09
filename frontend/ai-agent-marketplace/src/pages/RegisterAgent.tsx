@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,12 +10,21 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import { useWallet } from '@/contexts/WalletContext';
 import { useStellar } from '@/contexts/StellarContext';
-import { 
-  DollarSign, Clock, Star, User, CheckCircle, AlertCircle, 
-  ArrowLeft, Send, Wallet, Loader2, Plus, X, Tag, ArrowUpDown,
-  Shield, FileText, MessageSquare, Brain, Code, Globe, Activity
+import {
+  DollarSign, Star, CheckCircle,
+  ArrowLeft, Send, Wallet, Loader2, X, ArrowUpDown,
+  Shield, MessageSquare, Brain, Code, Globe, Activity,
+  Upload, FileJson, ExternalLink, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import {
+  uploadJsonToIpfs,
+  uploadToIpfs,
+  cidToUri,
+  ipfsUriToUrl,
+  isIpfsConfigured,
+  type UploadProgress,
+} from '@/lib/ipfs';
 
 const ALL_SKILLS = [
   'python', 'javascript', 'typescript', 'rust', 'go', 'java', 'cpp',
