@@ -79,3 +79,22 @@ async function uploadViaPinata(file: File | Blob, filename: string): Promise<str
   const json = await res.json() as { IpfsHash: string };
   return json.IpfsHash;
 }
+
+async function uploadViaWeb3Storage(file: File | Blob, filename: string): Promise<string> {
+  const res = await fetch('https://api.web3.storage/upload', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${IPFS_API_KEY}`,
+      'X-Name': filename,
+    },
+    body: file,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`web3.storage upload failed (${res.status}): ${body}`);
+  }
+
+  const json = await res.json() as { cid: string };
+  return json.cid;
+}
