@@ -232,6 +232,11 @@ export const RegisterAgent: React.FC = () => {
     }
   };
 
+  // ── derived IPFS UI state ────────────────────────────────────────────────
+  const isUploading = ipfsProgress.status === 'uploading';
+  const uploadDone = ipfsProgress.status === 'done' && !!uploadedCid;
+  const uploadError = ipfsProgress.status === 'error';
+
   if (!isConnected) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -292,19 +297,284 @@ export const RegisterAgent: React.FC = () => {
               
               <Textarea
                 label="Description"
-                placeholder="Describe your expertise, experience, and what makes you unique. Include years of experience, notable projects, and specialization areas."
+                placeholder="Describe your expertise, experience, and what makes you unique. Include years of experience, notable projects, and specialisation areas."
                 rows={6}
                 {...register('description')}
                 error={errors.description?.message}
               />
               
-              <Input
-                label="Profile URL (optional)"
-                type="url"
-                placeholder="https://your-portfolio.com or ipfs://QmYourMetadata"
-                {...register('metadataUri')}
-                error={errors.metadataUri?.message}
-              />
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Portfolio / External Links (optional)
+                </label>
+                <Textarea
+                  placeholder={"https://github.com/yourhandle\nhttps://your-portfolio.com"}
+                  rows={3}
+                  {...register('portfolioLinks')}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  One URL per line. These are included in the metadata uploaded to IPFS.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── IPFS Metadata Upload ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileJson className="h-5 w-5" />
+                Agent Metadata (IPFS)
+              </CardTitle>
+              <CardDescription>
+                Upload your extended profile to IPFS. The returned CID is stored
+                on-chain as <code className="text-xs bg-muted px-1 rounded">metadata_uri</code>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Upload mode selector */}
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { id: 'json-editor', label: 'Auto-build JSON', icon: FileJson },
+                  { id: 'file-upload', label: 'Upload File',     icon: Upload },
+                  { id: 'manual-url', label: 'Enter URL',        icon: Globe },
+                ] as { id: UploadMode; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(
+                  ({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => { setUploadMode(id); resetUpload(); }}
+                      className={clsx(
+                        'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
+                        uploadMode === id
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ),
+                )}
+              </div>
+
+              {/* ── JSON editor mode ── */}
+              {uploadMode === 'json-editor' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-muted/50 rounded-lg border font-mono text-xs text-muted-foreground overflow-auto max-h-64 whitespace-pre">
+                    {JSON.stringify(
+                      {
+                        name: nameValue || '<agent name>',
+                        description: descValue
+                          ? descValue.slice(0, 80) + (descValue.length > 80 ? '…' : '')
+                          : '<description>',
+                        skills: selectedSkills.length ? selectedSkills : ['<skill>'],
+                        pricePerTask: pricePerTask,
+                        portfolioLinks: (getValues('portfolioLinks') ?? '')
+                          .split('\n')
+                          .map((l) => l.trim())
+                          .filter(Boolean),
+                        createdAt: '<ISO timestamp>',
+                        version: '1.0',
+                      },
+                      null,
+                      2,
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This JSON is built from the form fields above and uploaded to IPFS when you
+                    click the button below.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUploadJson}
+                    disabled={isUploading || !nameValue || !descValue}
+                    className="gap-2"
+                    aria-label="Upload metadata JSON to IPFS"
+                  >
+                    {isUploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    {isUploading ? 'Uploading…' : 'Upload Metadata to IPFS'}
+                  </Button>
+                </div>
+              )}
+
+              {/* ── File upload mode ── */}
+              {uploadMode === 'file-upload' && (
+                <div className="space-y-4">
+                  <div
+                    className={clsx(
+                      'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
+                      selectedFile
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'border-border hover:border-primary/40',
+                    )}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files[0];
+                      if (f) {
+                        setSelectedFile(f);
+                        setUploadedCid(null);
+                        setIpfsProgress({ percent: null, status: 'idle' });
+                      }
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json,application/json,image/*"
+                      className="hidden"
+                      id="metadata-file-input"
+                      onChange={handleFileChange}
+                      aria-label="Select metadata file to upload to IPFS"
+                    />
+                    <label
+                      htmlFor="metadata-file-input"
+                      className="flex flex-col items-center gap-3 cursor-pointer"
+                    >
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                      {selectedFile ? (
+                        <span className="font-medium">{selectedFile.name}</span>
+                      ) : (
+                        <>
+                          <span className="font-medium">Drop a file or click to browse</span>
+                          <span className="text-xs text-muted-foreground">
+                            Accepts JSON, PNG, JPG, or any image format
+                          </span>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                  {selectedFile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleUploadFile}
+                      disabled={isUploading}
+                      className="gap-2"
+                      aria-label="Upload selected file to IPFS"
+                    >
+                      {isUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {isUploading ? 'Uploading…' : `Upload "${selectedFile.name}" to IPFS`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* ── Manual URL mode ── */}
+              {uploadMode === 'manual-url' && (
+                <Input
+                  label="Metadata URI"
+                  type="text"
+                  placeholder="https://your-portfolio.com or ipfs://Qm…"
+                  {...register('metadataUri')}
+                  error={errors.metadataUri?.message}
+                />
+              )}
+
+              {/* ── Upload progress / result ── */}
+              {isUploading && (
+                <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-primary">Uploading to IPFS…</p>
+                    {ipfsProgress.percent !== null && (
+                      <div className="mt-1 h-1.5 bg-primary/20 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{ width: `${ipfsProgress.percent}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {uploadDone && uploadedCid && (
+                <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="text-sm font-medium text-green-500">
+                      Uploaded successfully
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">CID (Content Identifier):</p>
+                    <code className="text-xs break-all font-mono bg-muted px-2 py-1 rounded block">
+                      {uploadedCid}
+                    </code>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      On-chain <code className="bg-muted px-1 rounded">metadata_uri</code>:
+                    </p>
+                    <code className="text-xs break-all font-mono bg-muted px-2 py-1 rounded block">
+                      {metadataUriValue}
+                    </code>
+                  </div>
+                  <div className="flex items-center gap-3 pt-1">
+                    <a
+                      href={ipfsUriToUrl(metadataUriValue ?? '')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View on IPFS gateway
+                    </a>
+                    <button
+                      type="button"
+                      onClick={resetUpload}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Re-upload
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {uploadError && (
+                <div className="flex items-start gap-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Upload failed</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ipfsProgress.error}</p>
+                    <button
+                      type="button"
+                      onClick={resetUpload}
+                      className="text-xs text-primary mt-1 hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!isIpfsConfigured() && uploadMode !== 'manual-url' && (
+                <div className="flex items-start gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                  <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-orange-500">IPFS not configured</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">
+                      Set <code className="bg-muted px-1 rounded">VITE_IPFS_API_KEY</code> in your{' '}
+                      <code className="bg-muted px-1 rounded">.env.local</code> file to enable
+                      uploads. See{' '}
+                      <code className="bg-muted px-1 rounded">.env.example</code> for details.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -313,9 +583,11 @@ export const RegisterAgent: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
-                Skills & Expertise
+                Skills &amp; Expertise
               </CardTitle>
-              <CardDescription>Select your skills (max 10). Verified skills will be highlighted on your profile.</CardDescription>
+              <CardDescription>
+                Select your skills (max 10). Verified skills will be highlighted on your profile.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {selectedSkills.length > 0 && (
@@ -375,7 +647,9 @@ export const RegisterAgent: React.FC = () => {
                 <DollarSign className="h-5 w-5" />
                 Pricing
               </CardTitle>
-              <CardDescription>Set your base price per task. You can negotiate per project.</CardDescription>
+              <CardDescription>
+                Set your base price per task. You can negotiate per project.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <Input
@@ -392,10 +666,10 @@ export const RegisterAgent: React.FC = () => {
               <div className="p-4 bg-muted/50 rounded-lg">
                 <h4 className="font-medium mb-3">Pricing Guidelines</h4>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Entry level: $10-30/task</li>
-                  <li>• Mid level: $30-100/task</li>
-                  <li>• Senior/Expert: $100-500/task</li>
-                  <li>• Specialized (audits, ML ops): $500+/task</li>
+                  <li>• Entry level: $10–30/task</li>
+                  <li>• Mid level: $30–100/task</li>
+                  <li>• Senior/Expert: $100–500/task</li>
+                  <li>• Specialised (audits, ML ops): $500+/task</li>
                 </ul>
               </div>
 
@@ -404,7 +678,10 @@ export const RegisterAgent: React.FC = () => {
                   <Shield className="h-5 w-5 text-blue-500 mt-0.5" />
                   <div className="text-sm text-blue-500">
                     <p className="font-medium">Reputation System</p>
-                    <p>Complete jobs to earn reputation. Higher reputation = more visibility + better jobs. Verified skills boost credibility.</p>
+                    <p>
+                      Complete jobs to earn reputation. Higher reputation = more visibility + better
+                      jobs. Verified skills boost credibility.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -436,7 +713,12 @@ export const RegisterAgent: React.FC = () => {
             <Link to="/marketplace">
               <Button type="button" variant="outline">Cancel</Button>
             </Link>
-            <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting} isLoading={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full md:w-auto"
+              disabled={isSubmitting || isUploading}
+              isLoading={isSubmitting}
+            >
               <Send className="h-4 w-4 mr-2" />
               Register Agent
             </Button>
