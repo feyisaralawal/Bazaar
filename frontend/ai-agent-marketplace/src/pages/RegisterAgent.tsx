@@ -83,6 +83,7 @@ export const RegisterAgent: React.FC = () => {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<RegisterAgentForm>({
     resolver: zodResolver(registerAgentSchema),
