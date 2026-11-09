@@ -71,6 +71,13 @@ export const RegisterAgent: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['Languages', 'AI/ML']);
 
+  // ── IPFS state ──
+  const [uploadMode, setUploadMode] = useState<UploadMode>('json-editor');
+  const [ipfsProgress, setIpfsProgress] = useState<UploadProgress>({ percent: null, status: 'idle' });
+  const [uploadedCid, setUploadedCid] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const {
     register,
     handleSubmit,
@@ -84,11 +91,15 @@ export const RegisterAgent: React.FC = () => {
       description: '',
       skills: [],
       pricePerTask: 50,
+      portfolioLinks: '',
       metadataUri: '',
     },
   });
 
   const pricePerTask = watch('pricePerTask');
+  const nameValue = watch('name');
+  const descValue = watch('description');
+  const metadataUriValue = watch('metadataUri');
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills(prev => {
