@@ -132,3 +132,18 @@ export async function uploadToIpfs(
   onProgress?.({ percent: 100, status: 'done', cid });
   return cid;
 }
+
+/**
+ * Upload a plain JS object as JSON to IPFS.
+ * Returns the CID string.
+ */
+export async function uploadJsonToIpfs(
+  data: Record<string, unknown>,
+  filename = 'metadata.json',
+  onProgress?: (p: UploadProgress) => void,
+): Promise<string> {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  });
+  return uploadToIpfs(blob, filename, onProgress);
+}
