@@ -44,7 +44,9 @@ export function isIpfsConfigured(): boolean {
   return IPFS_API_KEY.length > 0;
 }
 
-/** Format a CID as a full IPFS URI: "ipfs://<cid>" */
+/**
+ * Format a CID as a full IPFS URI: "ipfs://<cid>"
+ */
 export function cidToUri(cid: string): string {
   return `ipfs://${cid}`;
 }
