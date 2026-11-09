@@ -652,6 +652,45 @@ export const JobDetail: React.FC = () => {
                   </Card>
                 )}
 
+                {/* Deliverable Info */}
+                {(job.deliverableHash || submittedDeliverableCid) && (
+                  <Card className="border-blue-500/20 bg-blue-500/5">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-blue-500" />
+                        Deliverable
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      {job.deliverableHash && (
+                        <div>
+                          <p className="text-muted-foreground mb-1">On-chain SHA-256 hash:</p>
+                          <code className="text-xs break-all font-mono bg-muted px-2 py-1 rounded block">
+                            {job.deliverableHash}
+                          </code>
+                        </div>
+                      )}
+                      {submittedDeliverableCid && (
+                        <div>
+                          <p className="text-muted-foreground mb-1">IPFS CID:</p>
+                          <code className="text-xs break-all font-mono bg-muted px-2 py-1 rounded block">
+                            {submittedDeliverableCid}
+                          </code>
+                          <a
+                            href={ipfsUriToUrl(cidToUri(submittedDeliverableCid))}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            View on IPFS gateway
+                          </a>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Escrow Status */}
                 {job.escrowAmount > 0 && (
                   <Card className="border-green-500/20 bg-green-500/5">
