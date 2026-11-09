@@ -173,18 +173,71 @@ export const JobDetail: React.FC = () => {
       alert('Not connected to the marketplace contract. Configure it in Settings.');
       return;
     }
+
+    // At least one of file or note must be provided.
+    if (!deliverableFile && !deliverableNote.trim()) {
+      alert('Please upload a deliverable file or enter a description/link.');
+      return;
+    }
+
     setIsActing(true);
     try {
-      // The contract stores a 32-byte proof hash on-chain; the actual
-      // deliverable content/link lives off-chain (e.g. IPFS) and is hashed here.
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(deliverableNote));
-      await client.submitDeliverable(publicKey, signTransaction, jobIdNum, new Uint8Array(digest));
+      let fileHashBytes: Uint8Array;
+      let ipfsCid: string | null = deliverableIpfsCid;
+
+      if (deliverableFile) {
+        // If the file hasn't been uploaded to IPFS yet, do it now.
+        if (!ipfsCid) {
+          if (!isIpfsConfigured()) {
+            // Fall back to hashing the file bytes without IPFS when no key is set.
+            fileHashBytes = await sha256OfFile(deliverableFile);
+          } else {
+            setDeliverableUploadProgress({ percent: null, status: 'uploading' });
+            ipfsCid = await uploadToIpfs(
+              deliverableFile,
+              deliverableFile.name,
+              setDeliverableUploadProgress,
+            );
+            setDeliverableIpfsCid(ipfsCid);
+          }
+        }
+
+        if (ipfsCid) {
+          // Hash the CID string so the on-chain bytes32 is deterministic and
+          // can be verified later: sha256(cidToUri(cid)).
+          const encoded = new TextEncoder().encode(cidToUri(ipfsCid));
+          const digest = await crypto.subtle.digest('SHA-256', encoded);
+          fileHashBytes = new Uint8Array(digest);
+        } else {
+          // IPFS not configured — hash raw file bytes as fallback.
+          fileHashBytes = await sha256OfFile(deliverableFile);
+        }
+      } else {
+        // Text-only fallback: hash the note text (legacy behaviour).
+        const digest = await crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(deliverableNote),
+        );
+        fileHashBytes = new Uint8Array(digest);
+      }
+
+      await client.submitDeliverable(publicKey, signTransaction, jobIdNum, fileHashBytes);
+
+      // Persist CID so the UI can display the IPFS link after modal close.
+      if (ipfsCid) setSubmittedDeliverableCid(ipfsCid);
+
       setShowDeliverableModal(false);
       setDeliverableNote('');
+      setDeliverableFile(null);
+      setDeliverableIpfsCid(null);
+      setDeliverableUploadProgress({ percent: null, status: 'idle' });
+      if (deliverableFileRef.current) deliverableFileRef.current.value = '';
+
       await queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] });
       alert('Deliverable submitted!');
     } catch (err) {
       console.error('Submit failed:', err);
+      setDeliverableUploadProgress({ percent: null, status: 'error', error: String(err) });
       alert(err instanceof Error ? err.message : 'Failed to submit deliverable.');
     } finally {
       setIsActing(false);
