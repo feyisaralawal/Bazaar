@@ -98,3 +98,37 @@ async function uploadViaWeb3Storage(file: File | Blob, filename: string): Promis
   const json = await res.json() as { cid: string };
   return json.cid;
 }
+
+// ── public API ─────────────────────────────────────────────────────────────────
+
+/**
+ * Upload any File/Blob to IPFS and return the CID.
+ *
+ * @param file     File or Blob to pin
+ * @param filename Human-readable filename stored in pinning metadata
+ * @param onProgress Optional callback (not all providers support granular %)
+ */
+export async function uploadToIpfs(
+  file: File | Blob,
+  filename: string,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<string> {
+  onProgress?.({ percent: null, status: 'uploading' });
+
+  let cid: string;
+  try {
+    if (IPFS_PROVIDER === 'web3storage') {
+      cid = await uploadViaWeb3Storage(file, filename);
+    } else {
+      // default: Pinata
+      cid = await uploadViaPinata(file, filename);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    onProgress?.({ percent: null, status: 'error', error: message });
+    throw err;
+  }
+
+  onProgress?.({ percent: 100, status: 'done', cid });
+  return cid;
+}
