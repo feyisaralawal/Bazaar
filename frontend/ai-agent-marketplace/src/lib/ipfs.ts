@@ -27,3 +27,24 @@ export interface UploadProgress {
   cid?: string;
   error?: string;
 }
+
+// ── helpers ────────────────────────────────────────────────────────────────────
+
+/** Convert an IPFS URI (ipfs://Qm…) to a gateway HTTP URL. */
+export function ipfsUriToUrl(uri: string): string {
+  if (uri.startsWith('ipfs://')) {
+    return `${IPFS_GATEWAY}${uri.slice(7)}`;
+  }
+  // Already an HTTP URL – return as-is.
+  return uri;
+}
+
+/** True when the app has an API key configured. */
+export function isIpfsConfigured(): boolean {
+  return IPFS_API_KEY.length > 0;
+}
+
+/** Format a CID as a full IPFS URI: "ipfs://<cid>" */
+export function cidToUri(cid: string): string {
+  return `ipfs://${cid}`;
+}
