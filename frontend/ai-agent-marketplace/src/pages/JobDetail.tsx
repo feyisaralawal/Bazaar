@@ -994,22 +994,148 @@ export const JobDetail: React.FC = () => {
       {/* ── Submit Deliverable Modal ── */}
       {showDeliverableModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <CardHeader>
-              <CardTitle>Submit Deliverable for "{job.title}"</CardTitle>
+              <CardTitle>Submit Deliverable for &ldquo;{job.title}&rdquo;</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
+              {/* File upload */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Deliverable File
+                </label>
+                <div
+                  className={clsx(
+                    'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+                    deliverableFile
+                      ? 'border-primary/50 bg-primary/5'
+                      : 'border-border hover:border-primary/40',
+                  )}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer.files[0];
+                    if (f) {
+                      setDeliverableFile(f);
+                      setDeliverableIpfsCid(null);
+                      setDeliverableUploadProgress({ percent: null, status: 'idle' });
+                    }
+                  }}
+                >
+                  <input
+                    ref={deliverableFileRef}
+                    type="file"
+                    id="deliverable-file-input"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setDeliverableFile(f);
+                      setDeliverableIpfsCid(null);
+                      setDeliverableUploadProgress({ percent: null, status: 'idle' });
+                    }}
+                    aria-label="Select deliverable file to upload"
+                  />
+                  <label
+                    htmlFor="deliverable-file-input"
+                    className="flex flex-col items-center gap-2 cursor-pointer"
+                  >
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    {deliverableFile ? (
+                      <span className="font-medium text-sm">{deliverableFile.name}</span>
+                    ) : (
+                      <>
+                        <span className="font-medium text-sm">Drop a file or click to browse</span>
+                        <span className="text-xs text-muted-foreground">
+                          Any file type accepted — it will be uploaded to IPFS
+                        </span>
+                      </>
+                    )}
+                  </label>
+                </div>
+                {deliverableFile && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Size: {(deliverableFile.size / 1024).toFixed(1)} KB
+                  </p>
+                )}
+              </div>
+
+              {/* Optional text description */}
               <Textarea
-                label="Deliverable Summary / Link"
+                label="Description / External Link (optional)"
                 value={deliverableNote}
                 onChange={(e) => setDeliverableNote(e.target.value)}
-                placeholder="Describe the completed work or link to it (e.g. an IPFS or GitHub URL). This is hashed and stored on-chain as proof of delivery."
-                rows={4}
+                placeholder="Add a description, GitHub link, or any notes for the client. If no file is uploaded, this text will be hashed as the proof."
+                rows={3}
               />
+
+              {/* Upload progress */}
+              {deliverableUploadProgress.status === 'uploading' && (
+                <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-primary">Uploading to IPFS…</p>
+                    {deliverableUploadProgress.percent !== null && (
+                      <div className="mt-1 h-1.5 bg-primary/20 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{ width: `${deliverableUploadProgress.percent}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded CID preview */}
+              {deliverableIpfsCid && (
+                <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="text-sm font-medium text-green-500">
+                      Uploaded to IPFS
+                    </span>
+                  </div>
+                  <code className="text-xs break-all font-mono bg-muted px-2 py-1 rounded block">
+                    {deliverableIpfsCid}
+                  </code>
+                  <a
+                    href={ipfsUriToUrl(cidToUri(deliverableIpfsCid))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Preview on IPFS gateway
+                  </a>
+                </div>
+              )}
+
+              {/* IPFS not configured warning */}
+              {!isIpfsConfigured() && deliverableFile && (
+                <div className="flex items-start gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                  <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-orange-500">
+                    <p className="font-medium">IPFS not configured</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      The file will be hashed locally but not pinned to IPFS.
+                      Set <code className="bg-muted px-1 rounded">VITE_IPFS_API_KEY</code> to
+                      enable persistent storage.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
-                  onClick={() => setShowDeliverableModal(false)}
+                  onClick={() => {
+                    setShowDeliverableModal(false);
+                    setDeliverableFile(null);
+                    setDeliverableNote('');
+                    setDeliverableIpfsCid(null);
+                    setDeliverableUploadProgress({ percent: null, status: 'idle' });
+                    if (deliverableFileRef.current) deliverableFileRef.current.value = '';
+                  }}
                   className="flex-1"
                 >
                   Cancel
@@ -1017,10 +1143,14 @@ export const JobDetail: React.FC = () => {
                 <Button
                   onClick={handleSubmitDeliverable}
                   className="flex-1"
-                  disabled={!deliverableNote || isActing}
+                  disabled={
+                    (!deliverableFile && !deliverableNote.trim()) ||
+                    isActing ||
+                    deliverableUploadProgress.status === 'uploading'
+                  }
                   isLoading={isActing}
                 >
-                  Submit
+                  Submit Deliverable
                 </Button>
               </div>
             </CardContent>
