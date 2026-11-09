@@ -147,3 +147,14 @@ export async function uploadJsonToIpfs(
   });
   return uploadToIpfs(blob, filename, onProgress);
 }
+
+/**
+ * Compute the SHA-256 hash of a File/Blob and return it as a Uint8Array.
+ * This is the value passed to `client.submitDeliverable()` as the on-chain
+ * 32-byte proof hash.
+ */
+export async function sha256OfFile(file: File | Blob): Promise<Uint8Array> {
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return new Uint8Array(digest);
+}
