@@ -63,10 +63,14 @@ type RegisterAgentForm = z.infer<typeof registerAgentSchema>;
 
 type UploadMode = 'json-editor' | 'file-upload' | 'manual-url';
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const RegisterAgent: React.FC = () => {
   const navigate = useNavigate();
   const { publicKey, isConnected, signTransaction } = useWallet();
   const { getContractClient } = useStellar();
+
+  // ── form state ──
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['Languages', 'AI/ML']);
@@ -102,13 +106,15 @@ export const RegisterAgent: React.FC = () => {
   const descValue = watch('description');
   const metadataUriValue = watch('metadataUri');
 
+  // ── skill helpers ──────────────────────────────────────────────────────────
+
   const toggleSkill = (skill: string) => {
-    setSelectedSkills(prev => {
-      const newSkills = prev.includes(skill) 
-        ? prev.filter(s => s !== skill) 
-        : [...prev.slice(0, 9), skill]; // Max 10 skills
-      setValue('skills', newSkills, { shouldValidate: true });
-      return newSkills;
+    setSelectedSkills((prev) => {
+      const next = prev.includes(skill)
+        ? prev.filter((s) => s !== skill)
+        : [...prev.slice(0, 9), skill];
+      setValue('skills', next, { shouldValidate: true });
+      return next;
     });
   };
 
@@ -193,7 +199,6 @@ export const RegisterAgent: React.FC = () => {
       alert('Please connect your wallet first');
       return;
     }
-
     if (selectedSkills.length === 0) {
       alert('Please select at least one skill');
       return;
@@ -232,10 +237,7 @@ export const RegisterAgent: React.FC = () => {
     }
   };
 
-  // ── derived IPFS UI state ────────────────────────────────────────────────
-  const isUploading = ipfsProgress.status === 'uploading';
-  const uploadDone = ipfsProgress.status === 'done' && !!uploadedCid;
-  const uploadError = ipfsProgress.status === 'error';
+  // ── wallet guard ──────────────────────────────────────────────────────────
 
   if (!isConnected) {
     return (
@@ -256,12 +258,21 @@ export const RegisterAgent: React.FC = () => {
     );
   }
 
+  // ── render ────────────────────────────────────────────────────────────────
+
+  const isUploading = ipfsProgress.status === 'uploading';
+  const uploadDone = ipfsProgress.status === 'done' && !!uploadedCid;
+  const uploadError = ipfsProgress.status === 'error';
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
-            <Link to="/marketplace" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link
+              to="/marketplace"
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            >
               <ArrowLeft className="h-5 w-5" />
               <span>Back to Marketplace</span>
             </Link>
@@ -273,19 +284,23 @@ export const RegisterAgent: React.FC = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Register as AI Agent</h1>
           <p className="text-muted-foreground">
-            Showcase your AI skills and get hired for projects. Build your on-chain reputation with every completed job.
+            Showcase your AI skills and get hired for projects. Build your on-chain reputation with
+            every completed job.
           </p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-          {/* Basic Info */}
+
+          {/* ── Basic Info ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
                 Agent Profile
               </CardTitle>
-              <CardDescription>Information clients will see on your public profile</CardDescription>
+              <CardDescription>
+                Information clients will see on your public profile
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <Input
@@ -294,7 +309,6 @@ export const RegisterAgent: React.FC = () => {
                 {...register('name')}
                 error={errors.name?.message}
               />
-              
               <Textarea
                 label="Description"
                 placeholder="Describe your expertise, experience, and what makes you unique. Include years of experience, notable projects, and specialisation areas."
@@ -302,7 +316,6 @@ export const RegisterAgent: React.FC = () => {
                 {...register('description')}
                 error={errors.description?.message}
               />
-              
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Portfolio / External Links (optional)
@@ -578,7 +591,7 @@ export const RegisterAgent: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Skills */}
+          {/* ── Skills ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -592,10 +605,18 @@ export const RegisterAgent: React.FC = () => {
             <CardContent>
               {selectedSkills.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedSkills.map((skill, index) => (
-                    <Badge key={skill} variant="default" className={clsx(getSkillColor(skill), 'gap-1')} onClick={() => toggleSkill(skill)}>
+                  {selectedSkills.map((skill) => (
+                    <Badge
+                      key={skill}
+                      variant="default"
+                      className={clsx(getSkillColor(skill), 'gap-1')}
+                      onClick={() => toggleSkill(skill)}
+                    >
                       {skill}
-                      <X className="h-3 w-3 cursor-pointer hover:opacity-70" onClick={e => { e.stopPropagation(); toggleSkill(skill); }} />
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:opacity-70"
+                        onClick={(e) => { e.stopPropagation(); toggleSkill(skill); }}
+                      />
                     </Badge>
                   ))}
                   {selectedSkills.length >= 10 && (
@@ -613,19 +634,32 @@ export const RegisterAgent: React.FC = () => {
                       className="w-full px-4 py-3 bg-muted/50 flex items-center justify-between hover:bg-muted/100 transition-colors"
                     >
                       <span className="font-medium">{category}</span>
-                      <ArrowUpDown className={clsx('h-4 w-4 text-muted-foreground transition-transform', expandedCategories.includes(category) && 'rotate-180')} />
+                      <ArrowUpDown
+                        className={clsx(
+                          'h-4 w-4 text-muted-foreground transition-transform',
+                          expandedCategories.includes(category) && 'rotate-180',
+                        )}
+                      />
                     </button>
                     {expandedCategories.includes(category) && (
                       <div className="p-4 flex flex-wrap gap-2 border-t">
-                        {skills.map(skill => (
+                        {skills.map((skill) => (
                           <Badge
                             key={skill}
                             variant={selectedSkills.includes(skill) ? 'default' : 'outline'}
-                            className={clsx(getSkillColor(skill), 'cursor-pointer', selectedSkills.length >= 10 && !selectedSkills.includes(skill) && 'opacity-50 pointer-events-none')}
+                            className={clsx(
+                              getSkillColor(skill),
+                              'cursor-pointer',
+                              selectedSkills.length >= 10 &&
+                                !selectedSkills.includes(skill) &&
+                                'opacity-50 pointer-events-none',
+                            )}
                             onClick={() => toggleSkill(skill)}
                           >
                             {skill}
-                            {selectedSkills.includes(skill) && <CheckCircle className="ml-1 h-3 w-3" />}
+                            {selectedSkills.includes(skill) && (
+                              <CheckCircle className="ml-1 h-3 w-3" />
+                            )}
                           </Badge>
                         ))}
                       </div>
@@ -635,12 +669,14 @@ export const RegisterAgent: React.FC = () => {
               </div>
 
               {errors.skills && (
-                <p className="text-sm text-destructive" role="alert">{errors.skills.message}</p>
+                <p className="text-sm text-destructive mt-2" role="alert">
+                  {errors.skills.message}
+                </p>
               )}
             </CardContent>
           </Card>
 
-          {/* Pricing */}
+          {/* ── Pricing ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -688,7 +724,7 @@ export const RegisterAgent: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Benefits */}
+          {/* ── Benefits ── */}
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -698,20 +734,22 @@ export const RegisterAgent: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-4">
-                <Benefit icon={Shield} title="Escrow Protection" desc="Payments held in smart contract until client approves" />
-                <Benefit icon={Globe} title="Global Marketplace" desc="Access clients worldwide without intermediaries" />
-                <Benefit icon={Brain} title="Skill Verification" desc="Third-party verified skills boost credibility" />
+                <Benefit icon={Shield}        title="Escrow Protection"    desc="Payments held in smart contract until client approves" />
+                <Benefit icon={Globe}         title="Global Marketplace"   desc="Access clients worldwide without intermediaries" />
+                <Benefit icon={Brain}         title="Skill Verification"   desc="Third-party verified skills boost credibility" />
                 <Benefit icon={MessageSquare} title="Direct Communication" desc="Chat with clients before accepting jobs" />
-                <Benefit icon={Code} title="On-Chain Reputation" desc="Immutable track record of completed work" />
-                <Benefit icon={DollarSign} title="Low Fees" desc="Only 1% platform fee, paid by client" />
+                <Benefit icon={Code}          title="On-Chain Reputation"  desc="Immutable track record of completed work" />
+                <Benefit icon={DollarSign}    title="Low Fees"             desc="Only 1% platform fee, paid by client" />
               </div>
             </CardContent>
           </Card>
 
-          {/* Submit */}
+          {/* ── Submit ── */}
           <div className="flex gap-4 justify-end">
             <Link to="/marketplace">
-              <Button type="button" variant="outline">Cancel</Button>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
             </Link>
             <Button
               type="submit"
@@ -727,9 +765,19 @@ export const RegisterAgent: React.FC = () => {
       </main>
     </div>
   );
-}
+};
 
-function Benefit({ icon: Icon, title, desc }: { icon: React.ComponentType<{ className?: string }>; title: string; desc: string }) {
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Benefit({
+  icon: Icon,
+  title,
+  desc,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  desc: string;
+}) {
   return (
     <div className="flex items-start gap-3 p-4 bg-background rounded-lg border">
       <div className="p-2 bg-primary/10 rounded-lg">
@@ -755,3 +803,5 @@ function getSkillColor(skill: string): string {
   const hash = skill.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
 }
+
+export { getSkillColor };
