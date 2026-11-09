@@ -1,0 +1,162 @@
+/**
+ * IPFS upload utilities.
+ *
+ * Supports two pinning backends, chosen by the VITE_IPFS_PROVIDER env var
+ * (defaults to "pinata"):
+ *   - "pinata"        → POST to https://api.pinata.cloud/pinning/pinFileToIPFS
+ *   - "web3storage"   → POST to https://api.web3.storage/upload  (v1 API)
+ *
+ * Both backends require VITE_IPFS_API_KEY.
+ * The public gateway used for building read-URLs is VITE_IPFS_GATEWAY.
+ *
+ * For agent metadata we upload a JSON object.
+ * For deliverable files we upload the raw File / Blob.
+ */
+
+export const IPFS_GATEWAY =
+  import.meta.env.VITE_IPFS_GATEWAY ?? 'https://ipfs.io/ipfs/';
+
+const IPFS_API_KEY = import.meta.env.VITE_IPFS_API_KEY ?? '';
+const IPFS_PROVIDER: string =
+  (import.meta.env.VITE_IPFS_PROVIDER as string | undefined) ?? 'pinata';
+
+export interface UploadProgress {
+  /** 0–100, or null while the XHR / fetch is in flight without progress info */
+  percent: number | null;
+  status: 'idle' | 'uploading' | 'done' | 'error';
+  cid?: string;
+  error?: string;
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────────
+
+/** Convert an IPFS URI (ipfs://Qm…) to a gateway HTTP URL. */
+export function ipfsUriToUrl(uri: string): string {
+  if (uri.startsWith('ipfs://')) {
+    return `${IPFS_GATEWAY}${uri.slice(7)}`;
+  }
+  // Already an HTTP URL – return as-is.
+  return uri;
+}
+
+/** True when the app has an API key configured. */
+export function isIpfsConfigured(): boolean {
+  return IPFS_API_KEY.length > 0;
+}
+
+/**
+ * Format a CID as a full IPFS URI: "ipfs://<cid>"
+ */
+export function cidToUri(cid: string): string {
+  return `ipfs://${cid}`;
+}
+
+// ── upload implementations ─────────────────────────────────────────────────────
+
+async function uploadViaPinata(file: File | Blob, filename: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  form.append(
+    'pinataMetadata',
+    JSON.stringify({ name: filename }),
+  );
+  form.append(
+    'pinataOptions',
+    JSON.stringify({ cidVersion: 1 }),
+  );
+
+  const res = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${IPFS_API_KEY}`,
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Pinata upload failed (${res.status}): ${body}`);
+  }
+
+  const json = await res.json() as { IpfsHash: string };
+  return json.IpfsHash;
+}
+
+async function uploadViaWeb3Storage(file: File | Blob, filename: string): Promise<string> {
+  const res = await fetch('https://api.web3.storage/upload', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${IPFS_API_KEY}`,
+      'X-Name': filename,
+    },
+    body: file,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`web3.storage upload failed (${res.status}): ${body}`);
+  }
+
+  const json = await res.json() as { cid: string };
+  return json.cid;
+}
+
+// ── public API ─────────────────────────────────────────────────────────────────
+
+/**
+ * Upload any File/Blob to IPFS and return the CID.
+ *
+ * @param file     File or Blob to pin
+ * @param filename Human-readable filename stored in pinning metadata
+ * @param onProgress Optional callback (not all providers support granular %)
+ */
+export async function uploadToIpfs(
+  file: File | Blob,
+  filename: string,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<string> {
+  onProgress?.({ percent: null, status: 'uploading' });
+
+  let cid: string;
+  try {
+    if (IPFS_PROVIDER === 'web3storage') {
+      cid = await uploadViaWeb3Storage(file, filename);
+    } else {
+      // default: Pinata
+      cid = await uploadViaPinata(file, filename);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    onProgress?.({ percent: null, status: 'error', error: message });
+    throw err;
+  }
+
+  onProgress?.({ percent: 100, status: 'done', cid });
+  return cid;
+}
+
+/**
+ * Upload a plain JS object as JSON to IPFS.
+ * Returns the CID string.
+ */
+export async function uploadJsonToIpfs(
+  data: Record<string, unknown>,
+  filename = 'metadata.json',
+  onProgress?: (p: UploadProgress) => void,
+): Promise<string> {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  });
+  return uploadToIpfs(blob, filename, onProgress);
+}
+
+/**
+ * Compute the SHA-256 hash of a File/Blob and return it as a Uint8Array.
+ * This is the value passed to `client.submitDeliverable()` as the on-chain
+ * 32-byte proof hash.
+ */
+export async function sha256OfFile(file: File | Blob): Promise<Uint8Array> {
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return new Uint8Array(digest);
+}
