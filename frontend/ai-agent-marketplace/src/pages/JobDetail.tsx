@@ -50,6 +50,17 @@ export const JobDetail: React.FC = () => {
   const [deliverableNote, setDeliverableNote] = useState('');
   const [isActing, setIsActing] = useState(false);
 
+  // IPFS deliverable upload state
+  const [deliverableFile, setDeliverableFile] = useState<File | null>(null);
+  const [deliverableIpfsCid, setDeliverableIpfsCid] = useState<string | null>(null);
+  const [deliverableUploadProgress, setDeliverableUploadProgress] = useState<UploadProgress>({
+    percent: null,
+    status: 'idle',
+  });
+  // CID of the last successfully submitted deliverable (shown in the job detail)
+  const [submittedDeliverableCid, setSubmittedDeliverableCid] = useState<string | null>(null);
+  const deliverableFileRef = useRef<HTMLInputElement>(null);
+
   const jobIdNum = parseInt(jobId || '0');
 
   // ── job query ──────────────────────────────────────────────────────────────
