@@ -48,3 +48,34 @@ export function isIpfsConfigured(): boolean {
 export function cidToUri(cid: string): string {
   return `ipfs://${cid}`;
 }
+
+// ── upload implementations ─────────────────────────────────────────────────────
+
+async function uploadViaPinata(file: File | Blob, filename: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  form.append(
+    'pinataMetadata',
+    JSON.stringify({ name: filename }),
+  );
+  form.append(
+    'pinataOptions',
+    JSON.stringify({ cidVersion: 1 }),
+  );
+
+  const res = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${IPFS_API_KEY}`,
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Pinata upload failed (${res.status}): ${body}`);
+  }
+
+  const json = await res.json() as { IpfsHash: string };
+  return json.IpfsHash;
+}
