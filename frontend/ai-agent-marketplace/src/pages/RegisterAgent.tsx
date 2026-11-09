@@ -198,6 +198,14 @@ export const RegisterAgent: React.FC = () => {
       return;
     }
 
+    // Resolve the final metadataUri
+    let finalMetadataUri = data.metadataUri ?? '';
+    if (!finalMetadataUri) {
+      // No URI provided and no upload done — auto-generate a placeholder
+      // (acceptable for testnet; production should always upload)
+      finalMetadataUri = cidToUri(`QmAgent${Date.now()}`);
+    }
+
     setIsSubmitting(true);
     try {
       const client = getContractClient();
@@ -209,8 +217,8 @@ export const RegisterAgent: React.FC = () => {
         name: data.name,
         description: data.description,
         skills: data.skills,
-        pricePerTask: Math.round(data.pricePerTask * 10000000),
-        metadataUri: data.metadataUri || `ipfs://QmAgent${Date.now()}`,
+        pricePerTask: Math.round(data.pricePerTask * 10_000_000),
+        metadataUri: finalMetadataUri,
       });
 
       alert('Agent registered successfully!');
