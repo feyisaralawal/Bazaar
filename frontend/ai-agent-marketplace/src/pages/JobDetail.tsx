@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import {
-  DollarSign, Clock, Star, User, CheckCircle, AlertCircle,
+  DollarSign, Clock, User, CheckCircle, AlertCircle,
   ArrowLeft, Send, Wallet, Loader2, ExternalLink,
-  Shield, FileText, XCircle, RefreshCw,
+  Shield, FileText, XCircle, RefreshCw, Upload,
 } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useStellar } from '@/contexts/StellarContext';
@@ -18,6 +18,14 @@ import { QueryError } from '@/components/ui/QueryError';
 import { formatPrice, getSkillColor } from '@/pages/Marketplace';
 import { clsx } from 'clsx';
 import { format, formatDistanceToNow } from 'date-fns';
+import {
+  uploadToIpfs,
+  sha256OfFile,
+  cidToUri,
+  ipfsUriToUrl,
+  isIpfsConfigured,
+  type UploadProgress,
+} from '@/lib/ipfs';
 
 /**
  * Number of days after escrow creation beyond which the client may reclaim
