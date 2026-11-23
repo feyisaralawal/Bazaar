@@ -17,12 +17,19 @@ import {
   Activity, FileText, Star, CheckCircle, Save
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import {
+  useNotificationPrefs,
+  type NotificationPrefs,
+  type NotificationPrefKey,
+} from '@/store/notificationPrefs';
+
+type SettingsTab = 'profile' | 'wallet' | 'notifications' | 'security' | 'appearance';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
   const { publicKey, isConnected, disconnect, usdcBalance, xlmBalance } = useWallet();
   const { getContractClient } = useStellar();
-  const [activeTab, setActiveTab] = useState<'profile' | 'wallet' | 'notifications' | 'security' | 'appearance'>('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const { theme, setTheme, isDark } = useTheme();
 
   // ── Off-chain profile (localStorage) ──────────────────────────────────────
@@ -55,15 +62,8 @@ export const Settings: React.FC = () => {
   };
   // ──────────────────────────────────────────────────────────────────────────
 
-  const [notifications, setNotifications] = useState({
-    emailJobUpdates: true,
-    emailBidUpdates: true,
-    emailDisputes: true,
-    pushJobUpdates: true,
-    pushBidUpdates: true,
-    pushDisputes: true,
-    weeklyDigest: false,
-  });
+  const notifications = useNotificationPrefs((s) => s.prefs);
+  const setNotificationPref = useNotificationPrefs((s) => s.setPref);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
 
   if (!isConnected) {
@@ -100,7 +100,7 @@ export const Settings: React.FC = () => {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(val: string) => setActiveTab(val as SettingsTab)} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5" aria-label="Settings sections">
             <TabsTrigger value="profile"><User className="h-4 w-4 mr-2" /> Profile</TabsTrigger>
             <TabsTrigger value="wallet"><Wallet className="h-4 w-4 mr-2" /> Wallet</TabsTrigger>
@@ -298,20 +298,20 @@ export const Settings: React.FC = () => {
                   { key: 'emailJobUpdates', label: 'Job Updates', desc: 'New bids, job status changes, deliverable submissions' },
                   { key: 'emailBidUpdates', label: 'Bid Updates', desc: 'When your bids are accepted, rejected, or outbid' },
                   { key: 'emailDisputes', label: 'Disputes', desc: 'Dispute notifications and resolution updates' },
-                ]} notifications={notifications} setNotifications={setNotifications} />
-                
+                ]} notifications={notifications} setPref={setNotificationPref} />
+
                 <NotificationSection title="Push Notifications" icon="🔔" items={[
                   { key: 'pushJobUpdates', label: 'Job Updates', desc: 'Real-time updates on your jobs and bids' },
                   { key: 'pushBidUpdates', label: 'Bid Updates', desc: 'Instant notification when bid status changes' },
                   { key: 'pushDisputes', label: 'Disputes', desc: 'Urgent dispute notifications requiring action' },
-                ]} notifications={notifications} setNotifications={setNotifications} />
+                ]} notifications={notifications} setPref={setNotificationPref} />
 
                 <div className="border-t pt-6">
                   <label className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={notifications.weeklyDigest}
-                      onChange={e => setNotifications(prev => ({ ...prev, weeklyDigest: e.target.checked }))}
+                      onChange={e => setNotificationPref('weeklyDigest', e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
                     <div>
@@ -545,12 +545,12 @@ function TransactionRow({ type, amount, desc, date, status }: {
   );
 }
 
-function NotificationSection({ title, icon, items, notifications, setNotifications }: { 
-  title: string; 
-  icon: string; 
-  items: { key: string; label: string; desc: string }[];
-  notifications: any;
-  setNotifications: React.Dispatch<React.SetStateAction<any>>;
+function NotificationSection({ title, icon, items, notifications, setPref }: {
+  title: string;
+  icon: string;
+  items: { key: NotificationPrefKey; label: string; desc: string }[];
+  notifications: NotificationPrefs;
+  setPref: (key: NotificationPrefKey, value: boolean) => void;
 }) {
   return (
     <div>
@@ -564,7 +564,7 @@ function NotificationSection({ title, icon, items, notifications, setNotificatio
             <input
               type="checkbox"
               checked={notifications[item.key]}
-              onChange={e => setNotifications(prev => ({ ...prev, [item.key]: e.target.checked }))}
+              onChange={e => setPref(item.key, e.target.checked)}
               className="h-4 w-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
             />
             <div className="flex-1">

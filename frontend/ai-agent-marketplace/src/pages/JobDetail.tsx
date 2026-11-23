@@ -220,7 +220,7 @@ export const JobDetail: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['job', jobIdNum] }),
         queryClient.invalidateQueries({ queryKey: ['job-bids', jobIdNum] }),
       ]);
-      notify.success('Bid placed successfully!');
+      notify.success('Bid placed successfully!', undefined, 'bidUpdates');
     } catch (err) {
       console.error('Bid failed:', err);
       alert(err instanceof Error ? err.message : 'Failed to place bid. Please try again.');
