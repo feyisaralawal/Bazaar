@@ -75,7 +75,7 @@ type UploadMode = 'json-editor' | 'file-upload' | 'manual-url';
 
 export const RegisterAgent: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, signTransaction } = useWallet();
+  const { publicKey, isConnected, signTransaction, networkMismatch } = useWallet();
   const { getContractClient } = useStellar();
   const queryClient = useQueryClient();
 
@@ -863,8 +863,9 @@ export const RegisterAgent: React.FC = () => {
             <Button
               type="submit"
               className="w-full md:w-auto"
-              disabled={isSubmitting || isUploading || isPinning}
+              disabled={isSubmitting || isUploading || isPinning || !!networkMismatch}
               isLoading={isSubmitting}
+              title={networkMismatch ? `Switch Freighter to ${networkMismatch.expectedLabel} to continue` : undefined}
             >
               <Send className="h-4 w-4 mr-2" />
               Register Agent

@@ -5,6 +5,7 @@ import { Button } from './ui/Button';
 import { WalletConnect } from './WalletConnect';
 import { UserMenu } from './UserMenu';
 import { TransactionStatus } from './TransactionStatus';
+import { NetworkMismatchBanner } from './NetworkMismatchBanner';
 // Only the icons actually rendered are imported so the bundler can tree-shake
 // the rest of lucide-react out of the vendor chunk.
 import { Lock } from 'lucide-react';
@@ -184,6 +185,8 @@ export const Layout: React.FC = () => {
             )}
           </div>
         )}
+
+        <NetworkMismatchBanner />
       </header>
 
       <main className="flex-1">

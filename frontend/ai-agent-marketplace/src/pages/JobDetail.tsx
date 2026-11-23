@@ -46,9 +46,16 @@ const BIDS_PAGE_SIZE = 20;
 export const JobDetail: React.FC = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const { publicKey, isConnected, signTransaction } = useWallet();
+  const { publicKey, isConnected, signTransaction, networkMismatch } = useWallet();
   const { getContractClient } = useStellar();
   const queryClient = useQueryClient();
+  const [isActing, setIsActing] = useState(false);
+  // Every on-chain action needs a signature, which fails while Freighter is on
+  // the wrong network; the layout banner explains how to fix it.
+  const mismatchTitle = networkMismatch
+    ? `Switch Freighter to ${networkMismatch.expectedLabel} to continue`
+    : undefined;
+  const actionsDisabled = isActing || !!networkMismatch;
   const [activeTab, setActiveTab] = useState<'details' | 'bids' | 'activity'>('details');
   const [showBidModal, setShowBidModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
@@ -580,7 +587,12 @@ export const JobDetail: React.FC = () => {
         {/* ── Action Buttons ── */}
         <div className="flex flex-wrap gap-3 mb-8">
           {job.status === 'Open' && canBid && (
-            <Button onClick={() => setShowBidModal(true)} className="flex-1 sm:flex-none">
+            <Button
+              onClick={() => setShowBidModal(true)}
+              disabled={!!networkMismatch}
+              title={mismatchTitle}
+              className="flex-1 sm:flex-none"
+            >
               <Send className="h-4 w-4 mr-2" />
               Place Bid
             </Button>
@@ -602,7 +614,8 @@ export const JobDetail: React.FC = () => {
                     key={bid.id}
                     variant="outline"
                     onClick={() => handleAcceptBid(bid.id)}
-                    disabled={isActing}
+                    disabled={actionsDisabled}
+                    title={mismatchTitle}
                     className="flex-1 sm:flex-none"
                   >
                     Accept {bid.agent.slice(0, 6)}… ({formatPrice(bid.amount)})
@@ -612,7 +625,7 @@ export const JobDetail: React.FC = () => {
           )}
 
           {job.status === 'InProgress' && isAssignedAgent && !job.deliverableHash && (
-            <Button onClick={() => setShowDeliverableModal(true)} disabled={isActing} className="flex-1 sm:flex-none bg-primary">
+            <Button onClick={() => setShowDeliverableModal(true)} disabled={actionsDisabled} title={mismatchTitle} className="flex-1 sm:flex-none bg-primary">
               <FileText className="h-4 w-4 mr-2" />
               Submit Deliverable
             </Button>
@@ -621,7 +634,8 @@ export const JobDetail: React.FC = () => {
           {job.status === 'Completed' && job.deliverableHash && isClient && !job.completedAt && (
             <Button
               onClick={handleApprove}
-              disabled={isActing}
+              disabled={actionsDisabled}
+              title={mismatchTitle}
               className="flex-1 sm:flex-none bg-green-500 hover:bg-green-600"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
@@ -638,10 +652,10 @@ export const JobDetail: React.FC = () => {
           {canReclaimFunds && (
             <Button
               onClick={handleReclaimFunds}
-              disabled={isActing}
+              disabled={actionsDisabled}
               variant="outline"
               className="flex-1 sm:flex-none border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              title="Reclaim your USDC after the escrow expiry window"
+              title={mismatchTitle ?? 'Reclaim your USDC after the escrow expiry window'}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Reclaim Funds
@@ -701,7 +715,8 @@ export const JobDetail: React.FC = () => {
               </div>
               <Button
                 onClick={handleSubmitReview}
-                disabled={isSubmittingReview || reviewRating < 1}
+                disabled={isSubmittingReview || reviewRating < 1 || !!networkMismatch}
+                title={mismatchTitle}
               >
                 {isSubmittingReview ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -973,7 +988,8 @@ export const JobDetail: React.FC = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={isActing}
+                          disabled={actionsDisabled}
+                          title={mismatchTitle}
                           className="w-full mt-1 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                           onClick={handleReclaimFunds}
                           aria-label="Reclaim escrowed funds from expired escrow"
@@ -1006,7 +1022,7 @@ export const JobDetail: React.FC = () => {
                     <h3 className="font-semibold mb-1">No Bids Yet</h3>
                     <p className="text-muted-foreground">Be the first to bid on this job!</p>
                     {canBid && (
-                      <Button onClick={() => setShowBidModal(true)} className="mt-4">
+                      <Button onClick={() => setShowBidModal(true)} disabled={!!networkMismatch} title={mismatchTitle} className="mt-4">
                         Place First Bid
                       </Button>
                     )}

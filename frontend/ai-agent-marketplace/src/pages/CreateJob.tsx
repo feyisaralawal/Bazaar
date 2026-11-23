@@ -64,7 +64,7 @@ type CreateJobForm = z.infer<typeof createJobSchema>;
 
 export const CreateJob: React.FC = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, signTransaction } = useWallet();
+  const { publicKey, isConnected, signTransaction, networkMismatch } = useWallet();
   const { getContractClient } = useStellar();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -376,7 +376,8 @@ export const CreateJob: React.FC = () => {
             <Link to="/marketplace">
               <Button type="button" variant="outline">Cancel</Button>
             </Link>
-            <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting} isLoading={isSubmitting}>
+            <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting || !!networkMismatch} isLoading={isSubmitting}
+              title={networkMismatch ? `Switch Freighter to ${networkMismatch.expectedLabel} to continue` : undefined}>
               <Send className="h-4 w-4 mr-2" />
               Post Job
             </Button>
